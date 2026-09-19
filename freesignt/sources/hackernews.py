@@ -7,10 +7,8 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from freesignt.core.base import BaseSource
-from freesignt.core.models import FetchResult, Hit, SourceCategory
+from freesignt.core.models import FetchResult, SourceCategory
 
 
 class HackerNewsAlgoliaSource(BaseSource):
@@ -60,34 +58,6 @@ class HackerNewsAlgoliaSource(BaseSource):
             },
         )
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把 Algolia hits 归一化为 Hit 列表。"""
-        if not isinstance(data, dict):
-            return []
-        hits = []
-        for item in data.get("hits", []):
-            object_id = item.get("objectID", "")
-            url = item.get("url") or (
-                f"https://news.ycombinator.com/item?id={object_id}" if object_id else ""
-            )
-            text = item.get("story_text") or item.get("comment_text") or ""
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=item.get("title") or item.get("story_title") or "",
-                    url=url,
-                    snippet=str(text)[:200],
-                    extra={
-                        "points": item.get("points"),
-                        "comments": item.get("num_comments"),
-                        "author": item.get("author"),
-                        "created_at": item.get("created_at"),
-                    },
-                    raw=item,
-                )
-            )
-        return hits
-
 
 class HackerNewsFirebaseSource(BaseSource):
     """HN Firebase 实时接口:热帖/新帖 ID 列表与单条 item 明细(浏览型源)。"""
@@ -119,22 +89,3 @@ class HackerNewsFirebaseSource(BaseSource):
             url = f"https://hacker-news.firebaseio.com/v0/{kind}.json"
         return await self._get(url)
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """单条 item 映射为 Hit;ID 列表型结果无归一化意义,返回空。"""
-        if isinstance(data, dict) and data.get("title"):
-            item_id = data.get("id")
-            return [
-                Hit(
-                    source=self.name,
-                    title=data.get("title", ""),
-                    url=f"https://news.ycombinator.com/item?id={item_id}" if item_id else "",
-                    snippet=str(data.get("text") or "")[:200],
-                    extra={
-                        "points": data.get("score"),
-                        "author": data.get("by"),
-                        "time": data.get("time"),
-                    },
-                    raw=data,
-                )
-            ]
-        return []

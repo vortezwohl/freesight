@@ -8,10 +8,8 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from freesignt.core.base import BaseSource
-from freesignt.core.models import FetchResult, Hit, SourceCategory
+from freesignt.core.models import FetchResult, SourceCategory
 
 
 class GithubPublicSource(BaseSource):
@@ -59,28 +57,3 @@ class GithubPublicSource(BaseSource):
             params={"q": query, "per_page": per_page},
         )
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """单仓 dict 或搜索 items 归一化为 Hit 列表。"""
-        if not isinstance(data, dict):
-            return []
-        items = data.get("items") if "items" in data else [data]
-        hits = []
-        for item in items:
-            if not isinstance(item, dict) or "full_name" not in item:
-                continue
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=item.get("full_name", ""),
-                    url=item.get("html_url", ""),
-                    snippet=item.get("description") or "",
-                    extra={
-                        "stars": item.get("stargazers_count"),
-                        "forks": item.get("forks_count"),
-                        "language": item.get("language"),
-                        "updated_at": item.get("updated_at"),
-                    },
-                    raw=item,
-                )
-            )
-        return hits

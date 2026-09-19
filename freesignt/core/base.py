@@ -1,4 +1,4 @@
-"""数据源抽象基类:声明式元数据 + 异步获取 + 归一化钩子。
+"""数据源抽象基类:声明式元数据 + 异步获取。
 
 与原 Industry-Research 实现保持的概念一致性:
 - 每个源是一个 BaseSource 子类,通过类属性声明限速/超时/缓存等元数据;
@@ -8,9 +8,9 @@
 本版本的增强:
 - 全异步(_get 基于 HttpEngine);
 - 新增缓存 TTL、限流键覆盖、冷却覆盖、突发额度等声明项;
-- 新增 search_kwarg / search_default / limit_kwarg 声明,驱动统一搜索扇出;
-- 新增 to_hits() 归一化钩子,把源数据映射为跨源可比的 Hit;
-- 参数 JSON Schema 从签名与 docstring 自动派生(schema_overrides 兜底)。
+- 新增 search_kwarg / search_default / limit_kwarg 声明,驱动聚合检索扇出;
+- 参数 JSON Schema 从签名与 docstring 自动派生(schema_overrides 兜底),
+  供人类查阅与高级调用方二次封装(agent 工具等)自行取用。
 
 限速值为 2026-09-09 实测快照(响应头/行为实测);平台可能随时调整,
 生产环境应结合响应头自适应机制(见 ratelimit.py)动态应对。
@@ -21,7 +21,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from freesignt.core.http import HttpEngine
-from freesignt.core.models import FetchResult, Hit, SourceCategory, SourceInfo
+from freesignt.core.models import FetchResult, SourceCategory, SourceInfo
 from freesignt.core.schema import derive_input_schema
 
 
@@ -31,11 +31,10 @@ class BaseSource:
     子类约定:
         - 必须覆盖类属性 name / category / rate_limit / rate_period_s / description;
         - 必须实现异步 fetch(),内部通过 self._get() 发请求以获得治理保护;
-        - 可选覆盖 to_hits() 参与统一搜索归一化;
         - 子类定义时自动注册到全局注册表,无需手动调用注册函数。
 
     Class Attributes:
-        name: 源唯一名称(小写下划线),也是 agent 工具名。
+        name: 源唯一名称(小写下划线)。
         category: 源分类(SourceCategory),子类必须显式声明。
         rate_limit: 限速窗口内允许的请求数(来自实测/文档)。
         rate_period_s: 限速窗口长度(秒);与 rate_limit 共同决定放行速率。
@@ -45,12 +44,12 @@ class BaseSource:
         cache_ttl_s: 结果缓存 TTL 建议(秒);0 表示默认不缓存。
         limit_key: 限流键覆盖;None 按 URL host(同 host 多源共享预算)。
         cooldown_s: 429 冷却秒数覆盖(无 Retry-After 头时使用,如 Steam 300)。
-        description: 源的一句话中文说明(agent 工具描述直接复用)。
-        search_kwarg: 统一搜索时接收查询词的 fetch 参数名;None 表示
+        description: 源的一句话中文说明。
+        search_kwarg: 聚合检索时接收查询词的 fetch 参数名;None 表示
             该源无法参与关键词扇出(浏览型/复合参数型源)。
         search_default: 是否进入 client.search() 的默认扇出集合。
-        limit_kwarg: 统一搜索时控制条数的 fetch 参数名;None 表示源无此参数。
-        search_defaults: 统一搜索扇出时附加的默认参数(如 method=post_search)。
+        limit_kwarg: 聚合检索时控制条数的 fetch 参数名;None 表示源无此参数。
+        search_defaults: 聚合检索扇出时附加的默认参数(如 method=post_search)。
         schema_overrides: 参数 schema 补充片段(如 enum 取值),详见 schema.py。
     """
 
@@ -75,8 +74,8 @@ class BaseSource:
         """初始化源实例。
 
         Args:
-            engine: 所属 HTTP 引擎;由客户端注入。独立构造(如测试调用
-                to_hits)时可为 None,但此时不能调用 fetch/_get。
+            engine: 所属 HTTP 引擎;由客户端注入。独立构造(如查阅元信息)
+                时可为 None,但此时不能调用 fetch/_get。
         """
         self.engine = engine
 
@@ -105,19 +104,13 @@ class BaseSource:
 
     @property
     def searchable(self) -> bool:
-        """是否可参与统一搜索(存在接收查询词的参数)。"""
+        """是否可参与聚合检索(存在接收查询词的参数)。"""
         return self.search_kwarg is not None
 
     @classmethod
     def input_schema(cls) -> dict[str, Any]:
-        """派生 fetch 参数的 JSON Schema(agent 工具与人读参数表共用)。"""
+        """派生 fetch 参数的 JSON Schema(人读参数表与高级调用方封装共用)。"""
         return derive_input_schema(cls.fetch, overrides=cls.schema_overrides)
-
-    @classmethod
-    def doc_summary(cls) -> str:
-        """fetch docstring 的首段摘要(工具描述补充用)。"""
-        doc = (cls.fetch.__doc__ or "").strip()
-        return doc.split("\n\n", 1)[0].replace("\n", " ").strip()
 
     @classmethod
     def info(cls) -> SourceInfo:
@@ -195,15 +188,3 @@ class BaseSource:
             NotImplementedError: 子类未实现时抛出。
         """
         raise NotImplementedError
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把 fetch 结果归一化为统一搜索命中(可选实现)。
-
-        Args:
-            data: FetchResult.data(源原始业务数据)。
-            params: 产生该数据的 fetch 参数(一般不需要)。
-
-        Returns:
-            Hit 列表;默认实现返回空列表(浏览型源可缺省)。
-        """
-        return []

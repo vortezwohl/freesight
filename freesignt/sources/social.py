@@ -9,26 +9,8 @@
 
 from __future__ import annotations
 
-import re
-from typing import Any
-
 from freesignt.core.base import BaseSource
-from freesignt.core.models import FetchResult, Hit, SourceCategory
-
-# Mastodon 帖子 content 为 HTML,取摘要前剥掉标签与实体。
-_HTML_TAG = re.compile(r"<[^>]+>")
-
-
-def _strip_html(text: str) -> str:
-    """剥除 HTML 标签并折叠空白(Mastodon 帖子摘要用)。
-
-    Args:
-        text: 含 HTML 标签的原始文本。
-
-    Returns:
-        纯文本。
-    """
-    return re.sub(r"\s+", " ", _HTML_TAG.sub("", text)).strip()
+from freesignt.core.models import FetchResult, SourceCategory
 
 
 class BlueskySource(BaseSource):
@@ -71,62 +53,6 @@ class BlueskySource(BaseSource):
             raise ValueError(f"不支持的检索类型: {method}")
         return await self._get(url, params=params)
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把账号或帖子检索结果归一化为 Hit 列表。"""
-        if not isinstance(data, dict):
-            return []
-        method = (params or {}).get("method", "actor_search")
-        hits = []
-        if method == "actor_search":
-            for actor in data.get("actors", []):
-                if not isinstance(actor, dict):
-                    continue
-                handle = actor.get("handle", "")
-                hits.append(
-                    Hit(
-                        source=self.name,
-                        title=actor.get("displayName") or handle,
-                        url=f"https://bsky.app/profile/{handle}" if handle else "",
-                        snippet=actor.get("description") or "",
-                        extra={
-                            "handle": handle,
-                            "did": actor.get("did"),
-                            "followers": actor.get("followersCount"),
-                        },
-                        raw=actor,
-                    )
-                )
-        else:
-            for post in data.get("posts", []):
-                if not isinstance(post, dict):
-                    continue
-                record = post.get("record", {}) or {}
-                text = str(record.get("text") or "")
-                uri = post.get("uri", "")
-                url = ""
-                if uri.startswith("at://"):
-                    # at://did:xxx/app.bsky.feed.post/rkey -> 网页链接
-                    parts = uri.split("/")
-                    if len(parts) >= 4:
-                        url = f"https://bsky.app/profile/{parts[2]}/post/{parts[-1]}"
-                author = (post.get("author") or {}).get("handle", "")
-                hits.append(
-                    Hit(
-                        source=self.name,
-                        title=text[:80] or "(无正文)",
-                        url=url,
-                        snippet=text[:200],
-                        extra={
-                            "author": author,
-                            "likes": post.get("likeCount"),
-                            "replies": post.get("replyCount"),
-                            "created_at": record.get("createdAt"),
-                        },
-                        raw=post,
-                    )
-                )
-        return hits
-
 
 class MastodonTrendsSource(BaseSource):
     """Mastodon(mastodon.social)趋势标签与热门帖子(匿名可用部分)。"""
@@ -158,56 +84,6 @@ class MastodonTrendsSource(BaseSource):
             raise ValueError(f"不支持的趋势类型: {kind}")
         url = f"https://mastodon.social/api/v1/trends/{kind}"
         return await self._get(url, params={"limit": min(limit, 40)})
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把趋势内容归一化为 Hit 列表。"""
-        if not isinstance(data, list):
-            return []
-        kind = (params or {}).get("kind", "tags")
-        hits = []
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-            if kind == "tags":
-                history = item.get("history") or []
-                uses = history[0].get("uses") if history and isinstance(history[0], dict) else None
-                hits.append(
-                    Hit(
-                        source=self.name,
-                        title=f"#{item.get('name', '')}",
-                        url=item.get("url", ""),
-                        snippet=f"近期使用 {uses} 次" if uses is not None else "",
-                        extra={"name": item.get("name"), "uses": uses},
-                        raw=item,
-                    )
-                )
-            elif kind == "statuses":
-                account = item.get("account") or {}
-                hits.append(
-                    Hit(
-                        source=self.name,
-                        title=account.get("acct", ""),
-                        url=item.get("url", ""),
-                        snippet=_strip_html(str(item.get("content") or ""))[:200],
-                        extra={
-                            "reblogs": item.get("reblogs_count"),
-                            "favourites": item.get("favourites_count"),
-                        },
-                        raw=item,
-                    )
-                )
-            else:  # links
-                hits.append(
-                    Hit(
-                        source=self.name,
-                        title=item.get("title") or item.get("url", ""),
-                        url=item.get("url", ""),
-                        snippet=item.get("description") or "",
-                        extra={"provider": item.get("provider_name")},
-                        raw=item,
-                    )
-                )
-        return hits
 
 
 class V2exSource(BaseSource):
@@ -243,27 +119,3 @@ class V2exSource(BaseSource):
             raise ValueError(f"不支持的列表类型: {kind}")
         return await self._get(url)
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把主题列表归一化为 Hit 列表。"""
-        if not isinstance(data, list):
-            return []
-        hits = []
-        for topic in data:
-            if not isinstance(topic, dict):
-                continue
-            node = (topic.get("node") or {}).get("name", "")
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=topic.get("title", ""),
-                    url=topic.get("url", ""),
-                    snippet=str(topic.get("content") or "")[:160],
-                    extra={
-                        "replies": topic.get("replies"),
-                        "node": node,
-                        "member": (topic.get("member") or {}).get("username"),
-                    },
-                    raw=topic,
-                )
-            )
-        return hits

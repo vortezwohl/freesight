@@ -13,10 +13,8 @@ cooldown_s=300 交给限流引擎做全键冷却;冷却较长时直接返回携�
 
 from __future__ import annotations
 
-from typing import Any
-
 from freesignt.core.base import BaseSource
-from freesignt.core.models import FetchResult, Hit, SourceCategory
+from freesignt.core.models import FetchResult, SourceCategory
 
 
 class SteamStoreSource(BaseSource):
@@ -66,55 +64,6 @@ class SteamStoreSource(BaseSource):
             params={"term": term, "cc": cc, "l": lang},
         )
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把搜索结果或应用详情归一化为 Hit 列表。"""
-        if not isinstance(data, dict):
-            return []
-        hits = []
-        # storesearch 形态: {"items": [...], "total": n}
-        for item in data.get("items", []):
-            if not isinstance(item, dict):
-                continue
-            app_id = item.get("id")
-            price = (item.get("price") or {})
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=item.get("name", ""),
-                    url=f"https://store.steampowered.com/app/{app_id}" if app_id else "",
-                    snippet=item.get("tiny_description") or "",
-                    extra={
-                        "appid": app_id,
-                        "price_final": price.get("final"),
-                        "currency": price.get("currency"),
-                    },
-                    raw=item,
-                )
-            )
-        if hits:
-            return hits
-        # appdetails 形态: {"{appid}": {"success": bool, "data": {...}}}
-        for wrapper in data.values():
-            if not isinstance(wrapper, dict) or not wrapper.get("success"):
-                continue
-            detail = wrapper.get("data") or {}
-            app_id = detail.get("steam_appid")
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=detail.get("name", ""),
-                    url=f"https://store.steampowered.com/app/{app_id}" if app_id else "",
-                    snippet=detail.get("short_description") or "",
-                    extra={
-                        "appid": app_id,
-                        "genres": [g.get("description") for g in detail.get("genres", [])],
-                        "developers": detail.get("developers"),
-                    },
-                    raw=detail,
-                )
-            )
-        return hits
-
 
 class SteamSpySource(BaseSource):
     """SteamSpy API:玩家数/销量区间估算(top100 榜/单游戏详情)。
@@ -156,35 +105,3 @@ class SteamSpySource(BaseSource):
             params["appid"] = appid
         return await self._get("https://steamspy.com/api.php", params=params)
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把榜单映射或单游戏详情归一化为 Hit 列表。"""
-        if not isinstance(data, dict) or not data:
-            return []
-        items: list[tuple[str, dict]] = []
-        if "name" in data:
-            # appdetails 形态:单游戏 dict(榜单映射不会有顶层 name 键)。
-            items.append((str(data.get("appid", (params or {}).get("appid", ""))), data))
-        else:
-            # 榜单形态:{"appid": {...}}。
-            items = [(str(k), v) for k, v in data.items() if isinstance(v, dict)]
-        hits = []
-        for app_id, game in items[:100]:
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=game.get("name", ""),
-                    url=f"https://store.steampowered.com/app/{app_id}" if app_id else "",
-                    snippet=(
-                        f"持有者区间 {game.get('owner', '')}"
-                        f" · 双周活跃 {game.get('players_2weeks', '')}"
-                    ),
-                    extra={
-                        "appid": app_id,
-                        "owners": game.get("owner"),
-                        "players_2weeks": game.get("players_2weeks"),
-                        "players_forever": game.get("players_forever"),
-                    },
-                    raw=game,
-                )
-            )
-        return hits

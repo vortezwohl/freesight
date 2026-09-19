@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from freesignt.core.base import BaseSource
-from freesignt.core.models import FetchResult, Hit, SourceCategory
+from freesignt.core.models import FetchResult, SourceCategory
 
 
 class ITunesSearchSource(BaseSource):
@@ -49,41 +49,6 @@ class ITunesSearchSource(BaseSource):
             "https://itunes.apple.com/search",
             params={"term": term, "country": country, "entity": entity, "limit": limit},
         )
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把搜索结果归一化为 Hit 列表。"""
-        if not isinstance(data, dict):
-            return []
-        hits = []
-        for item in data.get("results", []):
-            genres = ", ".join((item.get("genres") or [])[:2])
-            rating = item.get("averageUserRating")
-            snippet = " · ".join(
-                part
-                for part in (
-                    item.get("artistName"),
-                    genres,
-                    f"评分 {rating:.1f}" if isinstance(rating, (int, float)) else "",
-                )
-                if part
-            )
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=item.get("trackName", ""),
-                    url=item.get("trackViewUrl", ""),
-                    snippet=snippet,
-                    extra={
-                        "app_id": item.get("trackId"),
-                        "bundle_id": item.get("bundleId"),
-                        "price": item.get("formattedPrice"),
-                        "rating": rating,
-                        "developer": item.get("artistName"),
-                    },
-                    raw=item,
-                )
-            )
-        return hits
 
 
 class ITunesReviewsSource(BaseSource):
@@ -130,21 +95,6 @@ class ITunesReviewsSource(BaseSource):
         if result.ok:
             result.data = self._normalize(result.data)
         return result
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把归一化后的评论列表映射为 Hit。"""
-        if not isinstance(data, dict):
-            return []
-        return [
-            Hit(
-                source=self.name,
-                title=review.get("title", ""),
-                snippet=review.get("content", ""),
-                extra={"rating": review.get("rating"), "author": review.get("author")},
-                raw=review,
-            )
-            for review in data.get("reviews", [])
-        ]
 
     @staticmethod
     def _normalize(feed: Any) -> dict[str, Any]:
@@ -225,25 +175,6 @@ class ITunesChartsSource(BaseSource):
             result.data = self._normalize(result.data)
         return result
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把归一化后的榜单映射为 Hit(含排名)。"""
-        if not isinstance(data, dict):
-            return []
-        hits = []
-        for rank, app in enumerate(data.get("apps", []), start=1):
-            app_id = str(app.get("id", ""))
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=app.get("name", ""),
-                    url=f"https://apps.apple.com/app/id{app_id}" if app_id else "",
-                    snippet=f"{app.get('artist', '')} · {app.get('category', '')}".strip(" ·"),
-                    extra={"rank": rank, "artist": app.get("artist"), "app_id": app.get("id")},
-                    raw=app,
-                )
-            )
-        return hits
-
     @staticmethod
     def _normalize(feed: Any) -> dict[str, Any]:
         """压平榜单 RSS 为应用列表。
@@ -286,3 +217,4 @@ class ITunesChartsSource(BaseSource):
             if isinstance(e, dict)
         ]
         return {"updated": _label(feed.get("feed", {}), "updated"), "apps": apps}
+

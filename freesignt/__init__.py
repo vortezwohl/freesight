@@ -1,62 +1,48 @@
-"""freesignt:免费竞品调研 SDK。
+"""freesignt:免费竞品调研数据聚合 SDK。
 
 聚合 25 个免费免 key 公开数据源(App Store/HackerNews/GitHub/开发者
-生态/招聘板/社媒/法定披露/Steam 等),提供:
-- 人体工学客户端(同步 FreeSight / 异步 AsyncFreeSight,源名即方法);
-- 多源扇出统一搜索(词法排序,可注入嵌入提供方升级为语义排序);
-- C 端高并发防护(按 host 令牌桶限流 + 429 自适应冷却 + TTL 缓存 +
-  单飞请求合并);
-- Agent 工具封装(OpenAI function calling 格式,参数 schema 自动派生)。
+生态/招聘板/社媒/法定披露/Steam 等),只负责三件事:
+- 聚合抓取:按 host 自适应限流 + 429 冷却 + TTL 缓存 + 单飞合并,
+  下游无感获取信息;
+- 聚合检索:一次查询扇出多源,原样聚合各源完整结果;
+- 结果聚合:各源结果装进一个容器,不做任何筛选/排序/相关性判断。
 
-SDK 不做持久化存储;缓存协议(CacheProtocol)可供调用方外接自有存储。
+筛选、排序、语义分析、agent 工具封装等全部交给调用方;
+SDK 不做持久化存储,缓存协议(CacheProtocol)可外接给调用方实现。
+
+两层 API 设计:
+- 本层(根包):开箱即用的最小 API——FreeSight 同步客户端、结果模型、
+  缓存注入协议与模块级快捷函数;
+- 内核层(freesignt.core.*):面向高级调用方,含 AsyncFreeSight 异步
+  客户端、源注册表、限流/缓存原语与 BaseSource(自定义源定义即注册),
+  按需从子模块导入,不在本层导出。
 
 快速上手:
     import freesignt
 
-    hits = freesignt.search("notion").hits[:10]
+    agg = freesignt.search("notion")          # 聚合检索,results 按源分组
+    for name, r in agg.results.items():
+        print(name, r.ok, r.error or "")
 
     with freesignt.FreeSight() as client:
-        result = client.itunes_search(term="notion")
-        tools = client.build_agent_tools()
+        result = client.itunes_search(term="notion")   # 源名即方法
 """
 
 from freesignt import sources as _sources  # noqa: F401  (导入即完成全部源注册)
-from freesignt.core.cache import CacheProtocol, NullCache, TTLCache
-from freesignt.core.client import AsyncFreeSight, FreeSight
-from freesignt.core.errors import FreeSightError, SourceNotFoundError
-from freesignt.core.models import (
-    FetchResult,
-    Hit,
-    SearchResponse,
-    SourceCategory,
-    SourceInfo,
-)
-from freesignt.core.registry import all_sources, by_category, names
-from freesignt.core.search import EmbeddingProvider
+from freesignt.core.cache import CacheProtocol
+from freesignt.core.client import FreeSight
+from freesignt.core.models import AggregateResult, FetchResult
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
-    "AsyncFreeSight",
+    "AggregateResult",
     "CacheProtocol",
     "FetchResult",
     "FreeSight",
-    "FreeSightError",
-    "Hit",
-    "NullCache",
-    "SearchResponse",
-    "SourceCategory",
-    "SourceFetchStatus",
-    "SourceInfo",
-    "SourceNotFoundError",
-    "TTLCache",
-    "EmbeddingProvider",
-    "all_sources",
-    "by_category",
-    "names",
-    "search",
     "fetch",
     "list_sources",
+    "search",
 ]
 
 # 模块级默认同步客户端:支撑 freesignt.search("notion") 一行式用法。
@@ -76,39 +62,33 @@ def search(
     *,
     sources: list[str] | None = None,
     limit_per_source: int = 5,
-    semantic: bool = True,
-    embedder: "EmbeddingProvider | None" = None,
     refresh: bool = False,
-) -> SearchResponse:
-    """模块级快捷搜索:使用进程级默认客户端。
+) -> AggregateResult:
+    """模块级聚合检索:使用进程级默认客户端。
 
     Args:
-        query: 查询词。
+        query: 查询词(产品名/公司名/关键词/域名皆可)。
         sources: 可选参与源列表;None 用默认扇出集合。
-        limit_per_source: 每源条数上限。
-        semantic: 注入 embedder 时是否语义排序。
-        embedder: 嵌入提供方(默认用默认客户端的配置,未配置则词法)。
+        limit_per_source: 每源获取条数(经源的 limit 参数生效)。
         refresh: 是否绕过缓存。
 
     Returns:
-        SearchResponse。
+        AggregateResult(各源完整结果,未筛选未排序)。
     """
     return _get_default_client().search(
         query,
         sources=sources,
         limit_per_source=limit_per_source,
-        semantic=semantic,
-        embedder=embedder,
         refresh=refresh,
     )
 
 
 def fetch(name: str, /, **params: object) -> FetchResult:
-    """模块级快捷取数:使用进程级默认客户端。
+    """模块级单源取数:使用进程级默认客户端。
 
     Args:
         name: 源名称。
-        **params: 源业务参数(refresh/ttl 为保留字)。
+        **params: 源业务参数(refresh/ttl 为管线保留名)。
 
     Returns:
         FetchResult。
@@ -116,6 +96,6 @@ def fetch(name: str, /, **params: object) -> FetchResult:
     return _get_default_client().fetch(name, **params)  # type: ignore[arg-type]
 
 
-def list_sources() -> list[SourceInfo]:
-    """模块级源目录快捷方法。"""
+def list_sources() -> list[object]:
+    """模块级源目录快捷方法(元素为 SourceInfo,含参数 schema 与限速说明)。"""
     return _get_default_client().list_sources()

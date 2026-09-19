@@ -125,8 +125,12 @@ def test_sync_client_end_to_end() -> None:
     with FreeSight(transport=router, rate_multiplier=1000.0) as client:
         result = client.hn_algolia(query="notion")
         assert result.ok and result.source == "hn_algolia"
-        response = client.search("notion")
-        assert response.total > 0
+        agg = client.search("notion")
+        assert set(agg.ok_sources) == {
+            "itunes_search", "hn_algolia", "github_public", "npm_registry",
+            "pypi_metadata", "huggingface_hub", "bluesky", "uspto_trademark",
+            "steam_store",
+        }
         snapshot = client.rate_snapshot()
         assert snapshot  # 各 host 治理器已建立
 

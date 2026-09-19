@@ -1,11 +1,11 @@
-"""统一数据模型:结果、搜索命中、聚合响应与源元信息。
+"""统一数据模型:获取结果、聚合结果与源元信息。
 
 本模块是 freesignt 的公共数据契约层,不依赖任何 IO 设施:
 - FetchResult: 单次数据获取的统一返回结构(兼容原 Industry-Research 形态,
   在此基础上增加 cached / fetched_at / meta 观测字段);
-- Hit: 统一搜索归一化后的单条结果(跨源可比);
-- SearchResponse: 多源扇出聚合后的整体响应;
-- SourceInfo: 源的静态元信息(供人类查阅与 agent 工具生成)。
+- AggregateResult: 聚合检索的整体返回,只做"把各源结果装进一个容器",
+  不做任何筛选、排序或相关性判断——那是调用方的职责;
+- SourceInfo: 源的静态元信息(供人类查阅与高级调用方二次封装)。
 """
 
 from __future__ import annotations
@@ -58,7 +58,7 @@ class FetchResult:
     fetched_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict[str, Any]:
-        """导出为可直接 JSON 序列化的 dict(agent 工具输出用)。
+        """导出为可直接 JSON 序列化的 dict。
 
         Returns:
             与字段一一对应的 dict;data 原样透传,由调用方决定裁剪策略。
@@ -77,118 +77,49 @@ class FetchResult:
 
 
 @dataclass
-class Hit:
-    """统一搜索的单条归一化结果。
+class AggregateResult:
+    """聚合检索的整体返回:各源完整结果的容器。
 
-    各数据源通过 BaseSource.to_hits() 把原始响应映射为本结构,使跨源
-    结果可以在同一列表中排序与比较;raw 保留原始条目供深挖。
-
-    Attributes:
-        source: 来源源名称(如 itunes_search)。
-        title: 展示标题(应用名/帖子标题/仓库名等)。
-        url: 可跳转链接(没有链接的源为空字符串)。
-        snippet: 一句话摘要(供语义排序与展示)。
-        score: 排序得分(词法或语义,越高越相关)。
-        extra: 源特有结构化字段(评分/下载量/星数等)。
-        raw: 原始条目数据(只读约定,调用方不应修改)。
-    """
-
-    source: str
-    title: str = ""
-    url: str = ""
-    snippet: str = ""
-    score: float = 0.0
-    extra: dict[str, Any] = field(default_factory=dict)
-    raw: Any = None
-
-    def to_dict(self, include_raw: bool = False) -> dict[str, Any]:
-        """导出 dict。
-
-        Args:
-            include_raw: 是否包含原始条目(数据量大,agent 输出默认裁剪)。
-
-        Returns:
-            可 JSON 序列化的 dict。
-        """
-        out = {
-            "source": self.source,
-            "title": self.title,
-            "url": self.url,
-            "snippet": self.snippet,
-            "score": round(self.score, 4),
-            "extra": self.extra,
-        }
-        if include_raw:
-            out["raw"] = self.raw
-        return out
-
-
-@dataclass
-class SourceFetchStatus:
-    """统一搜索中单个源的执行状态(成功/失败/缓存均不中断整体)。"""
-
-    ok: bool
-    count: int = 0
-    error: str | None = None
-    cached: bool = False
-    latency_s: float = 0.0
-
-    def to_dict(self) -> dict[str, Any]:
-        """导出 dict。"""
-        return {
-            "ok": self.ok,
-            "count": self.count,
-            "error": self.error,
-            "cached": self.cached,
-            "latency_s": round(self.latency_s, 4),
-        }
-
-
-@dataclass
-class SearchResponse:
-    """多源扇出聚合搜索的整体响应。
+    设计边界:SDK 只负责把多个源的结果原样聚合到一起(含失败源的降级
+    信息),不做任何筛选、排序、去重或相关性判断——这些完全交给调用方。
+    results 的键序为参与源列表顺序(确定性的,不隐含重要性排序)。
 
     Attributes:
         query: 原始查询词。
-        hits: 归一化并按 score 降序排列的命中列表。
-        semantic: 本次排序是否使用了语义嵌入(否则为词法排序)。
-        took_s: 整体耗时(秒,含网络)。
-        per_source: {源名: SourceFetchStatus},含失败源的降级信息。
+        results: {源名: FetchResult},data 为该源返回的全部业务数据。
+        took_s: 整体耗时(秒,含网络与缓存命中)。
     """
 
     query: str
-    hits: list[Hit] = field(default_factory=list)
-    semantic: bool = False
+    results: dict[str, FetchResult] = field(default_factory=dict)
     took_s: float = 0.0
-    per_source: dict[str, SourceFetchStatus] = field(default_factory=dict)
 
     @property
-    def total(self) -> int:
-        """命中总数。"""
-        return len(self.hits)
+    def ok_sources(self) -> list[str]:
+        """本次获取成功的源名称列表(列表序)。"""
+        return [name for name, r in self.results.items() if r.ok]
 
-    def to_dict(self, include_raw: bool = False) -> dict[str, Any]:
-        """导出 dict(agent 工具输出用)。
+    @property
+    def failed_sources(self) -> list[str]:
+        """本次获取失败的源名称列表(错误详情见对应 FetchResult.error)。"""
+        return [name for name, r in self.results.items() if not r.ok]
 
-        Args:
-            include_raw: 是否在每条命中中保留原始条目。
+    def to_dict(self) -> dict[str, Any]:
+        """导出为可直接 JSON 序列化的 dict。
 
         Returns:
-            可 JSON 序列化的 dict。
+            {query, took_s, results: {源名: FetchResult.to_dict()}}。
         """
         return {
             "query": self.query,
-            "semantic": self.semantic,
-            "total": self.total,
             "took_s": round(self.took_s, 4),
-            "hits": [h.to_dict(include_raw=include_raw) for h in self.hits],
-            "per_source": {k: v.to_dict() for k, v in self.per_source.items()},
+            "results": {k: v.to_dict() for k, v in self.results.items()},
         }
 
 
 @dataclass
 class SourceInfo:
-    """源的静态元信息(注册表导出给人看,也用于生成 agent 工具描述)。
+    """源的静态元信息(注册表导出给人看,也供高级调用方二次封装取用)。
 
     Attributes:
         name: 源唯一名称。
@@ -199,8 +130,8 @@ class SourceInfo:
         timeout: 单请求超时秒数。
         max_retries: 网络层异常最大重试次数。
         cache_ttl_s: 建议缓存 TTL(秒);0 表示不缓存。
-        searchable: 是否可参与统一搜索(有可用的关键词参数)。
-        search_default: 是否进入默认搜索扇出集合。
+        searchable: 是否可参与聚合检索(有可用的关键词参数)。
+        search_default: 是否进入默认扇出集合。
         input_schema: fetch 参数的 JSON Schema。
         doc: fetch 的完整中文 docstring。
     """

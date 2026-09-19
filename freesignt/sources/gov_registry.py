@@ -8,10 +8,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from freesignt.core.base import BaseSource
-from freesignt.core.models import FetchResult, Hit, SourceCategory
+from freesignt.core.models import FetchResult, SourceCategory
 
 
 class SecEdgarSource(BaseSource):
@@ -63,55 +62,6 @@ class SecEdgarSource(BaseSource):
             params["forms"] = forms
         return await self._get("https://efts.sec.gov/LATEST/search-index", params=params)
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把提交历史或检索结果归一化为 Hit 列表。"""
-        if not isinstance(data, dict) or not data:
-            return []
-        hits: list[Hit] = []
-        recent = data.get("filings", {}).get("recent", {})
-        if recent:
-            # submissions 结构:并行数组形式的近期提交。
-            names = data.get("names") or [""]
-            form_list = recent.get("form", [])
-            date_list = recent.get("filingDate", [])
-            acc_list = recent.get("accessionNumber", [])
-            cik = (recent.get("cik") or [""])[0]
-            for i, form in enumerate(form_list[:30]):
-                acc = acc_list[i] if i < len(acc_list) else ""
-                url = ""
-                if acc and cik:
-                    url = f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik}&type={form}"
-                hits.append(
-                    Hit(
-                        source=self.name,
-                        title=f"[{form}] {names[0]}",
-                        url=url,
-                        snippet=f"提交于 {date_list[i] if i < len(date_list) else ''}",
-                        extra={"form": form, "accession": acc},
-                    )
-                )
-            return hits
-        for item in (data.get("hits", {}) or {}).get("hits", []):
-            if not isinstance(item, dict):
-                continue
-            source = item.get("_source", {}) or {}
-            display = (source.get("display_names") or [""])[0]
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=f"[{source.get('form', '')}] {display}",
-                    url="",
-                    snippet=f"文件日期 {source.get('file_date', '')}",
-                    extra={
-                        "form": source.get("form"),
-                        "cik": source.get("cik"),
-                        "file_date": source.get("file_date"),
-                    },
-                    raw=item,
-                )
-            )
-        return hits
-
 
 class UsptoTrademarkSource(BaseSource):
     """USPTO 商标库(IBD API):商标申请常早于产品发布数月。"""
@@ -141,54 +91,6 @@ class UsptoTrademarkSource(BaseSource):
             "https://developer.uspto.gov/ibd-api/v1/trademark/documents",
             params={"searchText": search_text, "rows": rows},
         )
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把商标文档归一化为 Hit 列表。
-
-        USPTO IBD 返回结构存在多形态(Solr 风格 docs 嵌套层级不定),
-        此处做宽容提取;字段名以实际响应为准,未知字段保留在 raw。
-        """
-        if not isinstance(data, dict):
-            return []
-        docs = data.get("docs")
-        if docs is None and isinstance(data.get("response"), dict):
-            docs = data["response"].get("docs")
-        if not isinstance(docs, list):
-            return []
-        hits = []
-        for doc in docs:
-            if not isinstance(doc, dict):
-                continue
-            title = next(
-                (
-                    str(doc[key])
-                    for key in ("trademarkName", "wordMark", "markIdentification", "mark")
-                    if doc.get(key)
-                ),
-                "",
-            )
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=title or "(未命名商标)",
-                    url="",
-                    snippet=next(
-                        (
-                            str(doc[key])
-                            for key in ("statusLabel", "currentStatusLabel", "description")
-                            if doc.get(key)
-                        ),
-                        "",
-                    ),
-                    extra={
-                        key: doc.get(key)
-                        for key in ("serialNumber", "registrationNumber", "filingDate")
-                        if doc.get(key) is not None
-                    },
-                    raw=doc,
-                )
-            )
-        return hits
 
 
 class RdapDomainSource(BaseSource):
@@ -225,47 +127,6 @@ class RdapDomainSource(BaseSource):
             tld = domain.rsplit(".", 1)[-1]
             raise ValueError(f"后缀 {tld} 需提供对应注册局 tld_api")
         return await self._get(url)
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把 RDAP 对象归一化为单条 Hit(注册/到期事件摘要)。"""
-        if not isinstance(data, dict) or not data:
-            return []
-        events = {e.get("eventAction"): e.get("eventDate") for e in data.get("events", [])}
-        registrar = ""
-        for entity in data.get("entities", []):
-            if "registrar" not in (entity.get("roles") or []):
-                continue
-            # vcardArray 形如 ["vcard", [["fn", {}, "text", "Name"], ...]],取 fn 即注册商名。
-            vcard = (entity.get("vcardArray") or [None, []])[1]
-            registrar = next(
-                (item[3] for item in vcard if isinstance(item, list) and item[0] == "fn"),
-                "",
-            )
-            break
-        domain = data.get("ldhName") or (params or {}).get("domain", "")
-        snippet = " · ".join(
-            part
-            for part in (
-                f"注册于 {events['registration'][:10]}" if events.get("registration") else "",
-                f"到期 {events['expiration'][:10]}" if events.get("expiration") else "",
-                f"注册商 {registrar}" if registrar else "",
-            )
-            if part
-        )
-        return [
-            Hit(
-                source=self.name,
-                title=domain,
-                url=f"https://{domain}" if domain else "",
-                snippet=snippet,
-                extra={
-                    "registration": events.get("registration"),
-                    "expiration": events.get("expiration"),
-                    "status": data.get("status", [])[:3],
-                },
-                raw=data,
-            )
-        ]
 
 
 class CommonCrawlSource(BaseSource):
@@ -314,26 +175,3 @@ class CommonCrawlSource(BaseSource):
             result.data = records
         return result
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把收录记录归一化为 Hit 列表。"""
-        if not isinstance(data, list):
-            return []
-        hits = []
-        for record in data:
-            if not isinstance(record, dict):
-                continue
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=record.get("url", ""),
-                    url=record.get("url", ""),
-                    snippet=f"快照 {record.get('timestamp', '')} · 状态 {record.get('status', '')}",
-                    extra={
-                        "timestamp": record.get("timestamp"),
-                        "status": record.get("status"),
-                        "mime": record.get("mime"),
-                    },
-                    raw=record,
-                )
-            )
-        return hits

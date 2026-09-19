@@ -1,26 +1,32 @@
 """客户端门面:AsyncFreeSight(异步核心)与 FreeSight(同步桥)。
 
 人体工学设计:
-- 同一套方法面(fetch/search/describe/list_sources/call_tool/...),
-  异步版本可直接进 agent/服务端事件循环,同步版本面向脚本与人;
+- 同一套方法面(fetch/search/describe/list_sources),异步版本可直接进
+  服务端事件循环,同步版本面向脚本与人;
 - 属性糖:client.itunes_search(term="notion") 等价于
   client.fetch("itunes_search", term="notion"),源名即方法名;
 - fetch 的缓存管线:内存缓存 -> 单飞合并 -> 限流引擎,三层递进;
   refresh=True 可强制绕过缓存,ttl=秒数可临时覆盖缓存时间。
 
+职责边界:
+- search() 是"聚合检索":一次查询扇出到多个源,把各源完整结果装进
+  AggregateResult 原样返回;不做任何筛选、排序、去重或相关性判断,
+  这些完全交给调用方;
+- SDK 不做持久化存储;cache 参数可注入任何满足 CacheProtocol 的
+  外部缓存实现(存储能力外包给调用方)。
+
 并发与安全模型:
 - AsyncFreeSight 绑定单个事件循环(创建它的那个);跨线程请用 FreeSight;
 - FreeSight 内部持有一个专属后台事件循环线程,所有同步方法经
   run_coroutine_threadsafe 桥接,线程安全;禁止在运行中的事件循环内
-  调用(会阻塞该循环),此时应直接用 AsyncFreeSight;
-- SDK 不做持久化存储;cache 参数可注入任何满足 CacheProtocol 的
-  外部缓存实现(存储能力外包给调用方)。
+  调用(会阻塞该循环),此时应直接用 AsyncFreeSight。
 """
 
 from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from dataclasses import replace
 from typing import Any
 
@@ -28,8 +34,12 @@ from freesignt.core import registry
 from freesignt.core.cache import CacheProtocol, NullCache, SingleFlight, TTLCache, cache_key
 from freesignt.core.errors import SyncClientInAsyncContextError
 from freesignt.core.http import DEFAULT_SEC_UA, DEFAULT_UA, HttpConfig, HttpEngine
-from freesignt.core.models import FetchResult, SearchResponse, SourceCategory, SourceInfo
-from freesignt.core.search import EmbeddingProvider, unified_search
+from freesignt.core.models import (
+    AggregateResult,
+    FetchResult,
+    SourceCategory,
+    SourceInfo,
+)
 
 
 class AsyncFreeSight:
@@ -60,7 +70,6 @@ class AsyncFreeSight:
         verify: bool = True,
         retry_5xx: bool = True,
         transport: Any | None = None,
-        embedder: EmbeddingProvider | None = None,
     ) -> None:
         """初始化异步客户端。
 
@@ -80,8 +89,6 @@ class AsyncFreeSight:
             verify: 校验 TLS 证书。
             retry_5xx: 5xx 参与退避重试。
             transport: 自定义 httpx 传输(测试注入;生产为 None)。
-            embedder: 默认语义嵌入提供方(EmbeddingProvider 协议),
-                供 search(semantic=True) 使用;None 时词法排序。
         """
         if cache == "memory":
             self._cache: CacheProtocol = TTLCache(maxsize=cache_maxsize)
@@ -91,7 +98,6 @@ class AsyncFreeSight:
             self._cache = cache
         self._default_ttl_s = default_ttl_s
         self._singleflight = SingleFlight()
-        self._embedder = embedder
         self._instances: dict[str, Any] = {}
         self.engine = HttpEngine(
             HttpConfig(
@@ -184,24 +190,25 @@ class AsyncFreeSight:
         *,
         sources: list[str] | None = None,
         limit_per_source: int = 5,
-        semantic: bool = True,
-        embedder: EmbeddingProvider | None = None,
         refresh: bool = False,
-    ) -> SearchResponse:
-        """多源扇出统一搜索:一次查询,聚合多源归一化结果。
+    ) -> AggregateResult:
+        """聚合检索:一次查询扇出到多个源,原样聚合各源完整结果。
+
+        SDK 只负责扇出与聚合,返回的 AggregateResult 不做任何筛选、
+        排序、去重或相关性判断——如何消费(过滤/排序/嵌入/摘要)完全
+        由调用方决定。扇出请求本身走 fetch 管线(缓存+单飞+限流),
+        热门查询词在缓存窗口内不重复打上游。
 
         Args:
             query: 查询词(产品名/公司名/关键词/域名皆可)。
             sources: 参与源名称列表;None 用默认扇出集合
                 (search_default=True 的检索型源)。域名情报类源
                 (crt_sh/rdap_domain/common_crawl)需显式指定。
-            limit_per_source: 每源条数上限。
-            semantic: 注入 embedder 时优先语义排序(默认尽力)。
-            embedder: 本次搜索的嵌入提供方;None 用客户端默认。
+            limit_per_source: 每源获取条数(经源的 limit 参数生效)。
             refresh: True 时绕过缓存。
 
         Returns:
-            SearchResponse(单源失败记入 per_source,不影响整体)。
+            AggregateResult(单源失败保留在该源 FetchResult,不影响整体)。
 
         Raises:
             ValueError: 指定了不支持关键词扇出的源(无 search_kwarg)。
@@ -219,18 +226,29 @@ class AsyncFreeSight:
                     f"以下源不支持关键词扇出(无查询词参数): {unsearchable};"
                     f"可用扇出源: {searchable_names}"
                 )
-        effective_embedder = embedder if embedder is not None else self._embedder
+        started = time.perf_counter()
 
-        async def _fetcher(source_name: str, params: dict[str, Any]) -> FetchResult:
-            return await self.fetch(source_name, refresh=refresh, **params)
+        async def _one(cls: Any) -> tuple[str, FetchResult]:
+            params: dict[str, Any] = {cls.search_kwarg: query, **cls.search_defaults}
+            if cls.limit_kwarg:
+                params[cls.limit_kwarg] = limit_per_source
+            try:
+                result = await self.fetch(cls.name, refresh=refresh, **params)
+            except Exception as exc:  # noqa: BLE001 - 参数校验等异常归为该源失败。
+                result = FetchResult(
+                    ok=False,
+                    status=None,
+                    latency_s=0.0,
+                    error=f"{type(exc).__name__}: {exc}",
+                    source=cls.name,
+                )
+            return cls.name, result
 
-        return await unified_search(
-            _fetcher,
-            classes,
-            query,
-            limit_per_source=limit_per_source,
-            semantic=semantic,
-            embedder=effective_embedder,
+        outcomes = await asyncio.gather(*(_one(cls) for cls in classes))
+        return AggregateResult(
+            query=query,
+            results={name: result for name, result in outcomes},
+            took_s=time.perf_counter() - started,
         )
 
     # ---- 自省与观测 ----------------------------------------------------------
@@ -263,46 +281,6 @@ class AsyncFreeSight:
     def rate_snapshot(self) -> dict[str, dict[str, float]]:
         """各限流键的速率与剩余冷却快照(C 端观测/告警用)。"""
         return self.engine.governors.snapshot()
-
-    # ---- Agent 工具 -----------------------------------------------------------
-
-    def build_agent_tools(
-        self,
-        sources: list[str] | None = None,
-        *,
-        include_search: bool = True,
-        include_catalogue: bool = True,
-    ) -> list[dict[str, Any]]:
-        """生成 agent 工具声明(OpenAI function calling 格式)。
-
-        Args:
-            sources: 暴露为独立工具的源列表;None 为全部。
-            include_search: 是否包含聚合搜索复合工具 freesight_search。
-            include_catalogue: 是否包含源目录工具 freesight_list_sources。
-
-        Returns:
-            工具声明列表,可直接并入 LLM tools 参数。
-        """
-        from freesignt.core import agent
-
-        return agent.build_agent_tools(
-            self, sources=sources, include_search=include_search,
-            include_catalogue=include_catalogue,
-        )
-
-    async def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
-        """执行一个 agent 工具(名称与 build_agent_tools 对应)。
-
-        Args:
-            name: 工具名(源名称或 freesight_search/freesight_list_sources)。
-            arguments: 工具参数 dict。
-
-        Returns:
-            可 JSON 序列化的结果 dict;执行失败返回 {"ok": False, "error": ...}。
-        """
-        from freesignt.core import agent
-
-        return await agent.call_tool_async(self, name, arguments or {})
 
     # ---- 属性糖:源名即方法 -----------------------------------------------------
 
@@ -429,8 +407,9 @@ class FreeSight:
     用法:
         with FreeSight() as client:
             result = client.itunes_search(term="notion")
-            for hit in client.search("notion").hits[:10]:
-                print(hit.title, hit.url)
+            agg = client.search("notion")
+            for name, r in agg.results.items():
+                print(name, r.ok, r.error or "")
 
     线程安全;不可在运行中的事件循环内使用(改用 AsyncFreeSight)。
     """
@@ -465,18 +444,14 @@ class FreeSight:
         *,
         sources: list[str] | None = None,
         limit_per_source: int = 5,
-        semantic: bool = True,
-        embedder: EmbeddingProvider | None = None,
         refresh: bool = False,
-    ) -> SearchResponse:
-        """同步 search,语义与 AsyncFreeSight.search 一致。"""
+    ) -> AggregateResult:
+        """同步聚合检索,语义与 AsyncFreeSight.search 一致。"""
         return self._bridge.run(
             self._async.search(
                 query,
                 sources=sources,
                 limit_per_source=limit_per_source,
-                semantic=semantic,
-                embedder=embedder,
                 refresh=refresh,
             )
         )
@@ -492,22 +467,6 @@ class FreeSight:
     def rate_snapshot(self) -> dict[str, dict[str, float]]:
         """限流观测快照(纯内存操作,不经过桥)。"""
         return self._async.rate_snapshot()
-
-    def build_agent_tools(
-        self,
-        sources: list[str] | None = None,
-        *,
-        include_search: bool = True,
-        include_catalogue: bool = True,
-    ) -> list[dict[str, Any]]:
-        """生成 agent 工具声明(纯内存操作,不经过桥)。"""
-        return self._async.build_agent_tools(
-            sources, include_search=include_search, include_catalogue=include_catalogue
-        )
-
-    def call_tool(self, name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
-        """同步执行 agent 工具。"""
-        return self._bridge.run(self._async.call_tool(name, arguments or {}))
 
     def close(self) -> None:
         """关闭底层资源;幂等。"""

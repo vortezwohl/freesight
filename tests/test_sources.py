@@ -1,15 +1,20 @@
-"""25 个数据源移植验证:fetch 归一化与 to_hits 映射(全部离线桩)。"""
+"""25 个数据源移植验证:fetch 与源内归一化逻辑(全部离线桩)。
+
+SDK 只负责抓取与源内必要的结构归一化(如 RSS 压平/JSONL 逐行解析),
+不做跨源筛选与排序,因此断言全部针对 FetchResult.data 原始业务数据。
+"""
 
 from __future__ import annotations
 
 import pytest
 
+from freesignt.core.client import AsyncFreeSight
 from freesignt.core.models import FetchResult
 from tests.conftest import RouterTransport
 
 
 async def test_itunes_search(client, router) -> None:
-    """itunes_search:元数据搜索与 Hit 归一化。"""
+    """itunes_search:应用元数据搜索。"""
     router.add_json(
         "itunes.apple.com/search",
         {"resultCount": 1, "results": [{
@@ -20,12 +25,7 @@ async def test_itunes_search(client, router) -> None:
     )
     result = await client.fetch("itunes_search", term="notion")
     assert result.ok and result.data["resultCount"] == 1
-    client.describe("itunes_search")
-    source = client._source_instance("itunes_search")
-    hit_list = source.to_hits(result.data, {"term": "notion"})
-    assert hit_list[0].title == "Notion"
-    assert hit_list[0].url.endswith("id1")
-    assert hit_list[0].extra["app_id"] == 1
+    assert result.data["results"][0]["trackName"] == "Notion"
 
 
 async def test_itunes_reviews_single_entry_dict(client, router) -> None:
@@ -61,14 +61,12 @@ async def test_itunes_charts_id_extraction(client, router) -> None:
     result = await client.fetch("itunes_charts", country="us")
     assert result.ok
     app = result.data["apps"][0]
-    assert app["id"] == "42" and app["name"] == "App A"
-    hits = client._source_instance("itunes_charts").to_hits(result.data, {})
-    assert hits[0].extra["rank"] == 1
-    assert "id42" in hits[0].url
+    assert app["id"] == "42" and app["name"] == "App A" and app["artist"] == "Dev A"
+    assert result.data["updated"] == "2024-01-01"
 
 
 async def test_hn_algolia(client, router) -> None:
-    """hn_algolia:命中归一化,无 url 时回退 HN 站内链接。"""
+    """hn_algolia:搜索结果原样返回(含无 url 的命中)。"""
     router.add_json(
         "hn.algolia.com",
         {"nbHits": 2, "hits": [
@@ -79,9 +77,8 @@ async def test_hn_algolia(client, router) -> None:
     )
     result = await client.fetch("hn_algolia", query="thing")
     assert result.ok and result.data["nbHits"] == 2
-    hits = client._source_instance("hn_algolia").to_hits(result.data, {"query": "thing"})
-    assert hits[0].url == "https://example.com"
-    assert hits[1].url == "https://news.ycombinator.com/item?id=88"
+    assert result.data["hits"][0]["url"] == "https://example.com"
+    assert "url" not in result.data["hits"][1]
 
 
 async def test_hn_firebase_item_and_list(client, router) -> None:
@@ -126,8 +123,6 @@ async def test_dev_ecosystem_sources(client, router) -> None:
     router.add_json("pypistats.org", {"data": {"last_month": 12345, "last_week": 1000}})
     stats = await client.fetch("pypi_downloads", package="pkg")
     assert stats.ok and stats.data["data"]["last_month"] == 12345
-    hit = client._source_instance("pypi_downloads").to_hits(stats.data, {"package": "pkg"})
-    assert "12,345" in hit[0].snippet
 
     router.add_json("repos.ecosyste.ms", {"full_name": "o/r", "description": "d",
                                           "stargazers_count": 7, "html_url": "https://github.com/o/r"})
@@ -160,12 +155,11 @@ async def test_jobs_sources(client, router) -> None:
                                        "categories": {"location": "Remote", "team": "Core"}}])
     lv = await client.fetch("lever_jobs", company="acme")
     assert lv.ok and lv.data[0]["text"] == "Eng"
-    hits = client._source_instance("lever_jobs").to_hits(lv.data, {})
-    assert hits[0].snippet == "Remote · Core"
+    assert lv.data[0]["categories"]["team"] == "Core"
 
 
 async def test_bluesky_actor_and_post(client, router) -> None:
-    """bluesky:账号检索、帖子检索与 at:// 链接转换。"""
+    """bluesky:账号检索与帖子检索两路径及参数校验。"""
     router.add_json("searchActors", {"actors": [{"handle": "a.bsky.social", "displayName": "A",
                                                  "description": "bio", "followersCount": 3}]})
     router.add_json("searchPosts", {"posts": [
@@ -174,14 +168,13 @@ async def test_bluesky_actor_and_post(client, router) -> None:
     actors = await client.fetch("bluesky", q="a", method="actor_search")
     assert actors.ok and actors.data["actors"][0]["handle"] == "a.bsky.social"
     posts = await client.fetch("bluesky", q="notion", method="post_search")
-    hits = client._source_instance("bluesky").to_hits(posts.data, {"method": "post_search"})
-    assert hits[0].url == "https://bsky.app/profile/did:plc:abc/post/rk1"
+    assert posts.ok and posts.data["posts"][0]["uri"].startswith("at://did:plc:abc")
     with pytest.raises(ValueError):
         await client.fetch("bluesky", q="x", method="nope")
 
 
 async def test_mastodon_and_v2ex(client, router) -> None:
-    """mastodon 趋势(含 HTML 剥离)与 v2ex。"""
+    """mastodon 趋势与 v2ex。"""
     router.add_json("trends/tags", [{"name": "ai", "url": "https://x/tags/ai",
                                      "history": [{"uses": "123"}]}])
     tags = await client.fetch("mastodon_trends", kind="tags")
@@ -191,8 +184,7 @@ async def test_mastodon_and_v2ex(client, router) -> None:
                                          "content": "<p>hello <b>world</b></p>",
                                          "reblogs_count": 1}])
     statuses = await client.fetch("mastodon_trends", kind="statuses")
-    hits = client._source_instance("mastodon_trends").to_hits(statuses.data, {"kind": "statuses"})
-    assert hits[0].snippet == "hello world"
+    assert statuses.ok and statuses.data[0]["content"] == "<p>hello <b>world</b></p>"
 
     router.add_json("topics/hot.json", [{"title": "T", "url": "https://v2ex.com/t/1",
                                          "content": "c", "replies": 3, "node": {"name": "create"}}])
@@ -203,7 +195,7 @@ async def test_mastodon_and_v2ex(client, router) -> None:
 
 
 async def test_sec_edgar_both_modes(client, router) -> None:
-    """sec_edgar:CIK 提交历史(并行数组压平)与全文检索。"""
+    """sec_edgar:CIK 提交历史与全文检索两分支。"""
     router.add_json(
         "submissions/CIK0000320193.json",
         {"names": ["Apple Inc."], "filings": {"recent": {
@@ -213,9 +205,7 @@ async def test_sec_edgar_both_modes(client, router) -> None:
     )
     subs = await client.fetch("sec_edgar", cik="0000320193")
     assert subs.ok
-    hits = client._source_instance("sec_edgar").to_hits(subs.data, {"cik": "0000320193"})
-    assert hits[0].title.startswith("[10-K] Apple Inc.")
-    assert hits[1].extra["accession"] == "a2"
+    assert subs.data["filings"]["recent"]["form"] == ["10-K", "8-K"]
 
     router.add_json("search-index", {"hits": {"total": {"value": 1}, "hits": [
         {"_source": {"display_names": ["Acme Inc."], "form": "D", "file_date": "2024-01-01"}}]}})
@@ -234,17 +224,15 @@ async def test_sec_headers_override(client, router) -> None:
 
 
 async def test_uspto_trademark(client, router) -> None:
-    """uspto:Solr 风格 docs 提取。"""
+    """uspto:文档检索原样返回。"""
     router.add_json("developer.uspto.gov", {"response": {"docs": [
         {"trademarkName": "ACME", "statusLabel": "Registered", "serialNumber": "1"}]}})
     result = await client.fetch("uspto_trademark", search_text="acme")
-    assert result.ok
-    hits = client._source_instance("uspto_trademark").to_hits(result.data, {})
-    assert hits[0].title == "ACME" and hits[0].extra["serialNumber"] == "1"
+    assert result.ok and result.data["response"]["docs"][0]["trademarkName"] == "ACME"
 
 
 async def test_rdap_domain(client, router) -> None:
-    """rdap:事件/注册商提取与后缀校验。"""
+    """rdap:注册信息原样返回与后缀校验。"""
     router.add_json("rdap.verisign.com", {
         "ldhName": "example.com",
         "events": [{"eventAction": "registration", "eventDate": "2020-01-01T00:00:00Z"},
@@ -254,9 +242,8 @@ async def test_rdap_domain(client, router) -> None:
         "status": ["active"],
     })
     result = await client.fetch("rdap_domain", domain="example.com")
-    assert result.ok
-    hits = client._source_instance("rdap_domain").to_hits(result.data, {"domain": "example.com"})
-    assert hits[0].snippet == "注册于 2020-01-01 · 到期 2027-01-01 · 注册商 Example Registrar"
+    assert result.ok and result.data["ldhName"] == "example.com"
+    assert result.data["events"][0]["eventAction"] == "registration"
     with pytest.raises(ValueError):
         await client.fetch("rdap_domain", domain="example.io")
 
@@ -279,16 +266,13 @@ async def test_steam_store_both_modes(client, router) -> None:
     router.add_json("storesearch", {"total": 1, "items": [
         {"id": 7, "name": "Game", "price": {"final": 1999, "currency": "USD"}}]})
     search = await client.fetch("steam_store", term="game")
-    assert search.ok
-    hits = client._source_instance("steam_store").to_hits(search.data, {"term": "game"})
-    assert hits[0].title == "Game" and hits[0].url.endswith("/7")
+    assert search.ok and search.data["items"][0]["name"] == "Game"
 
     router.add_json("appdetails", {"7": {"success": True, "data": {
         "steam_appid": 7, "name": "Game", "short_description": "fun",
         "genres": [{"description": "Action"}]}}})
     detail = await client.fetch("steam_store", appid=7)
-    hits2 = client._source_instance("steam_store").to_hits(detail.data, {"appid": 7})
-    assert hits2[0].extra["genres"] == ["Action"]
+    assert detail.ok and detail.data["7"]["data"]["steam_appid"] == 7
     with pytest.raises(ValueError):
         await client.fetch("steam_store")
 
@@ -303,17 +287,14 @@ async def test_steamspy_top100_and_detail(client, router) -> None:
                  "players_2weeks": "1,000,000 .. 2,000,000"}},
     )
     top = await client.fetch("steamspy")
-    assert top.ok
-    hits = client._source_instance("steamspy").to_hits(top.data, {})
-    assert hits[0].title == "Dota 2" and hits[0].url.endswith("/570")
+    assert top.ok and top.data["570"]["name"] == "Dota 2"
 
     detail = await client.fetch("steamspy", request="appdetails", appid=440)
-    hits2 = client._source_instance("steamspy").to_hits(detail.data, {"appid": 440})
-    assert hits2[0].title == "TF2"
+    assert detail.ok and detail.data["name"] == "TF2"
 
 
-async def test_itchio_feed_parse(client, router) -> None:
-    """itchio:RSS XML 解析为 Hit。"""
+async def test_itchio_feed_raw_xml(client, router) -> None:
+    """itchio:RSS 以原始 XML 文本返回(解析交给调用方)。"""
     router.add_text(
         "itch.io",
         '<?xml version="1.0"?><rss version="2.0"><channel>'
@@ -324,8 +305,7 @@ async def test_itchio_feed_parse(client, router) -> None:
     )
     result = await client.fetch("itchio_feed")
     assert result.ok and isinstance(result.data, str)
-    hits = client._source_instance("itchio_feed").to_hits(result.data, {})
-    assert hits[0].title == "Indie Game" and hits[0].url.endswith("/g")
+    assert "<title>Indie Game</title>" in result.data
 
 
 async def test_crt_sh_subdomains(client, router) -> None:
@@ -337,14 +317,10 @@ async def test_crt_sh_subdomains(client, router) -> None:
     result = await client.fetch("crt_sh", domain="example.com")
     assert result.ok
     assert result.data == {"subdomains": ["a.example.com", "b.example.com"], "records": 2}
-    hits = client._source_instance("crt_sh").to_hits(result.data, {"domain": "example.com"})
-    assert len(hits) == 2 and hits[0].url == "https://a.example.com"
 
 
 async def test_crt_sh_non_json_falls_back_to_error() -> None:
     """crt_sh 返回非 JSON(如临时错误页)时折叠为 ok=False。"""
-    from freesignt.core.client import AsyncFreeSight
-
     router = RouterTransport()
     router.add_text("crt.sh", "<html>under maintenance</html>", content_type="text/html")
     async with AsyncFreeSight(transport=router, rate_multiplier=1000.0) as client:

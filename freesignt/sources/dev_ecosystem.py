@@ -8,10 +8,8 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from freesignt.core.base import BaseSource
-from freesignt.core.models import FetchResult, Hit, SourceCategory
+from freesignt.core.models import FetchResult, SourceCategory
 
 
 class NpmRegistrySource(BaseSource):
@@ -42,31 +40,6 @@ class NpmRegistrySource(BaseSource):
             params={"text": text, "size": size},
         )
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把搜索 objects 归一化为 Hit 列表。"""
-        if not isinstance(data, dict):
-            return []
-        hits = []
-        for obj in data.get("objects", []):
-            package = obj.get("package", {})
-            name = package.get("name", "")
-            score = obj.get("score", {}) or {}
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=name,
-                    url=f"https://www.npmjs.com/package/{name}" if name else "",
-                    snippet=package.get("description") or "",
-                    extra={
-                        "version": package.get("version"),
-                        "publisher": (package.get("publisher") or {}).get("username"),
-                        "score": round(score.get("final", 0.0), 3),
-                    },
-                    raw=obj,
-                )
-            )
-        return hits
-
 
 class PyPiSource(BaseSource):
     """PyPI:包元数据 JSON(版本/作者/依赖)。"""
@@ -90,31 +63,6 @@ class PyPiSource(BaseSource):
             data 为 {"info": {...}, "releases": {...}}。
         """
         return await self._get(f"https://pypi.org/pypi/{package}/json")
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把包元数据归一化为单条 Hit。"""
-        if not isinstance(data, dict):
-            return []
-        info = data.get("info", {})
-        if not info:
-            return []
-        name = info.get("name", "")
-        releases = data.get("releases", {}) or {}
-        return [
-            Hit(
-                source=self.name,
-                title=name,
-                url=f"https://pypi.org/project/{name}/" if name else "",
-                snippet=info.get("summary") or "",
-                extra={
-                    "version": info.get("version"),
-                    "author": info.get("author"),
-                    "home_page": info.get("home_page"),
-                    "release_count": len(releases),
-                },
-                raw=info,
-            )
-        ]
 
 
 class PyPiStatsSource(BaseSource):
@@ -140,31 +88,6 @@ class PyPiStatsSource(BaseSource):
             data 为 {"data": {"last_month": int, ...}}。
         """
         return await self._get(f"https://pypistats.org/api/packages/{package}/recent")
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把下载量数据归一化为单条 Hit(包名取自请求参数)。"""
-        if not isinstance(data, dict):
-            return []
-        stats = data.get("data", {}) or {}
-        package = (params or {}).get("package", "")
-        last_month = stats.get("last_month")
-        snippet = (
-            f"近30天下载 {last_month:,} 次" if isinstance(last_month, int) else ""
-        )
-        return [
-            Hit(
-                source=self.name,
-                title=package,
-                url=f"https://pypistats.org/packages/{package}" if package else "",
-                snippet=snippet,
-                extra={
-                    "last_month": last_month,
-                    "last_week": stats.get("last_week"),
-                    "last_day": stats.get("last_day"),
-                },
-                raw=stats,
-            )
-        ]
 
 
 class EcosysteMsSource(BaseSource):
@@ -196,31 +119,6 @@ class EcosysteMsSource(BaseSource):
         return await self._get(
             f"https://repos.ecosyste.ms/api/v1/hosts/{host}/repositories/{owner}/{repo}"
         )
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把仓库镜像元数据归一化为单条 Hit。"""
-        if not isinstance(data, dict) or not data:
-            return []
-        full_name = data.get("full_name") or "/".join(
-            str((params or {}).get(k, "")) for k in ("owner", "repo")
-        ).strip("/")
-        url = data.get("html_url") or f"https://github.com/{full_name}"
-        return [
-            Hit(
-                source=self.name,
-                title=full_name,
-                url=url,
-                snippet=data.get("description") or "",
-                extra={
-                    "stars": data.get("stargazers_count"),
-                    "forks": data.get("forks_count"),
-                    "language": data.get("language"),
-                    "license": (data.get("license") or {}).get("spdx_id"),
-                    "updated_at": data.get("updated_at"),
-                },
-                raw=data,
-            )
-        ]
 
 
 class WordPressPluginsSource(BaseSource):
@@ -257,32 +155,6 @@ class WordPressPluginsSource(BaseSource):
             params={"action": "query_plugins", "request[page]": page,
                     "request[per_page]": per_page, "request[browse]": browse},
         )
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把插件列表归一化为 Hit 列表。"""
-        if not isinstance(data, dict):
-            return []
-        hits = []
-        for plugin in data.get("plugins", []):
-            if not isinstance(plugin, dict):
-                continue
-            slug = plugin.get("slug", "")
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=plugin.get("name", ""),
-                    url=f"https://wordpress.org/plugins/{slug}/" if slug else "",
-                    snippet=plugin.get("short_description") or "",
-                    extra={
-                        "slug": slug,
-                        "active_installs": plugin.get("active_installs"),
-                        "rating": plugin.get("rating"),
-                        "updated": plugin.get("last_updated"),
-                    },
-                    raw=plugin,
-                )
-            )
-        return hits
 
 
 class HuggingFaceSource(BaseSource):
@@ -336,36 +208,3 @@ class HuggingFaceSource(BaseSource):
             params["direction"] = -1  # 降序(Hub API 约定数值排序需配方向)
         return await self._get(f"https://huggingface.co/api/{kind}", params=params)
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把 Hub 资源列表归一化为 Hit 列表。"""
-        if not isinstance(data, list):
-            return []
-        kind = (params or {}).get("kind", "models")
-        hits = []
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-            item_id = item.get("id") or item.get("modelId") or ""
-            parts = []
-            if item.get("pipeline_tag"):
-                parts.append(str(item["pipeline_tag"]))
-            if isinstance(item.get("downloads"), int):
-                parts.append(f"下载 {item['downloads']:,}")
-            if isinstance(item.get("likes"), int):
-                parts.append(f"赞 {item['likes']:,}")
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=item_id,
-                    url=f"https://huggingface.co/{kind}/{item_id}" if item_id else "",
-                    snippet=" · ".join(parts),
-                    extra={
-                        "kind": kind,
-                        "downloads": item.get("downloads"),
-                        "likes": item.get("likes"),
-                        "pipeline_tag": item.get("pipeline_tag"),
-                    },
-                    raw=item,
-                )
-            )
-        return hits

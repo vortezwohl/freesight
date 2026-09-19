@@ -9,11 +9,9 @@
 from __future__ import annotations
 
 import asyncio
-import xml.etree.ElementTree as ET
-from typing import Any
 
 from freesignt.core.base import BaseSource
-from freesignt.core.models import FetchResult, Hit, SourceCategory
+from freesignt.core.models import FetchResult, SourceCategory
 
 
 class ItchIoFeedSource(BaseSource):
@@ -39,34 +37,6 @@ class ItchIoFeedSource(BaseSource):
             data 为 RSS XML 原始文本(字符串);to_hits 会解析出条目。
         """
         return await self._get(f"https://itch.io/games/{feed}.xml")
-
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """轻量解析 RSS XML 为 Hit 列表(无第三方 feed 依赖)。
-
-        解析失败时返回空列表,原始 XML 始终保留在 FetchResult.data。
-        """
-        if not isinstance(data, str) or not data.strip():
-            return []
-        try:
-            root = ET.fromstring(data)
-        except ET.ParseError:
-            return []
-        hits = []
-        for item in root.iter("item"):
-            title = (item.findtext("title") or "").strip()
-            link = (item.findtext("link") or "").strip()
-            pub_date = (item.findtext("pubDate") or "").strip()
-            hits.append(
-                Hit(
-                    source=self.name,
-                    title=title,
-                    url=link,
-                    snippet=f"发布于 {pub_date}" if pub_date else "",
-                    extra={"pub_date": pub_date},
-                    raw=None,  # XML 元素不可序列化,不进 raw
-                )
-            )
-        return hits
 
 
 class CrtShSource(BaseSource):
@@ -125,17 +95,3 @@ class CrtShSource(BaseSource):
             )
         return result
 
-    def to_hits(self, data: Any, params: dict[str, Any] | None = None) -> list[Hit]:
-        """把子域名列表归一化为 Hit 列表(每个子域一条)。"""
-        if not isinstance(data, dict):
-            return []
-        return [
-            Hit(
-                source=self.name,
-                title=subdomain,
-                url=f"https://{subdomain}",
-                snippet="CT 日志中发现的子域名",
-                extra={"domain": (params or {}).get("domain")},
-            )
-            for subdomain in data.get("subdomains", [])
-        ]
