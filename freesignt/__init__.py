@@ -11,11 +11,10 @@
 SDK 不做持久化存储,缓存协议(CacheProtocol)可外接给调用方实现。
 
 两层 API 设计:
-- 本层(根包):开箱即用的最小 API——FreeSight 同步客户端、结果模型、
-  缓存注入协议与模块级快捷函数;
-- 内核层(freesignt.core.*):面向高级调用方,含 AsyncFreeSight 异步
-  客户端、源注册表、限流/缓存原语与 BaseSource(自定义源定义即注册),
-  按需从子模块导入,不在本层导出。
+- 本层(根包):开箱即用的最小 API——同步 FreeSight 与异步 AsyncFreeSight
+  双客户端(同层级、同一套方法面)、结果模型、缓存注入协议与模块级快捷函数;
+- 内核层(freesignt.core.*):面向扩展与二次封装,含源注册表、限流/缓存
+  原语与 BaseSource(自定义源定义即注册),按需从子模块导入,不在本层导出。
 
 快速上手:
     import freesignt
@@ -24,19 +23,25 @@ SDK 不做持久化存储,缓存协议(CacheProtocol)可外接给调用方实现
     for name, r in agg.results.items():
         print(name, r.ok, r.error or "")
 
-    with freesignt.FreeSight() as client:
-        result = client.itunes_search(term="notion")   # 源名即方法
+    with freesignt.FreeSight() as client:             # 同步
+        result = client.itunes_search(term="notion")  # 源名即方法
+
+    from freesignt import AsyncFreeSight              # 异步(服务端/agent 宿主)
+
+    async with AsyncFreeSight() as client:
+        agg = await client.search("notion")
 """
 
 from freesignt import sources as _sources  # noqa: F401  (导入即完成全部源注册)
 from freesignt.core.cache import CacheProtocol
-from freesignt.core.client import FreeSight
+from freesignt.core.client import AsyncFreeSight, FreeSight
 from freesignt.core.models import AggregateResult, FetchResult
 
 __version__ = "0.2.0"
 
 __all__ = [
     "AggregateResult",
+    "AsyncFreeSight",
     "CacheProtocol",
     "FetchResult",
     "FreeSight",

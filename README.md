@@ -30,31 +30,34 @@ agg = freesignt.search("notion")
 for name, r in agg.results.items():
     print(name, r.ok, r.error or "")
 
-# 显式客户端(推荐):源名即方法
+# 同步客户端(推荐,脚本与人类):源名即方法
 with freesignt.FreeSight() as client:
     result = client.itunes_search(term="notion", limit=5)   # -> FetchResult
     reviews = client.itunes_reviews(app_id=1239583776)
     agg = client.search("notion", limit_per_source=5)
     info = client.describe("crt_sh")          # 参数 schema/限速/中文说明
     names = [s.name for s in client.list_sources()]
+
+# 异步客户端(服务端/agent 宿主):与 FreeSight 同层级、同一套方法面
+from freesignt import AsyncFreeSight
+
+async with AsyncFreeSight() as client:
+    agg = await client.search("notion")
+    result = await client.fetch("hn_algolia", query="show hn")
 ```
 
-根包只导出:`FreeSight` / `FetchResult` / `AggregateResult` /
-`CacheProtocol`,以及快捷函数 `search` / `fetch` / `list_sources`。
+根包只导出:`FreeSight` / `AsyncFreeSight`(双客户端同层级)、
+`FetchResult` / `AggregateResult` / `CacheProtocol`,以及快捷函数
+`search` / `fetch` / `list_sources`。
 
-**第二层:内核层(高级调用方自行取用,不在根包导出)**
+**第二层:内核层(扩展与二次封装,不在根包导出)**
 
 ```python
-from freesignt.core.client import AsyncFreeSight       # 异步客户端(服务端/agent 宿主)
 from freesignt.core.base import BaseSource             # 自定义源基类(定义即注册)
 from freesignt.core import registry                    # 源注册表(get/catalogue/...)
 from freesignt.core.cache import TTLCache, SingleFlight, CacheProtocol
 from freesignt.core.ratelimit import TokenBucket, RateGovernor
 from freesignt.core.http import HttpEngine, HttpConfig
-
-async with AsyncFreeSight() as client:
-    agg = await client.search("notion")
-    result = await client.fetch("hn_algolia", query="show hn")
 ```
 
 高级调用方(如 agent 框架接入方)自行基于内核层做工具封装、语义排序、
@@ -141,8 +144,8 @@ client = freesignt.FreeSight(cache=MyRedisCache())   # 或 cache=None 关闭缓�
 
 ## 线程与事件循环模型
 
-- `AsyncFreeSight`(内核层)绑定创建它的事件循环;跨线程/脚本场景用
-  根包的 `FreeSight`;
+- `AsyncFreeSight` 绑定创建它的事件循环;跨线程/脚本场景用根包的
+  `FreeSight`;
 - `FreeSight` 内部持有一个专属后台事件循环线程(双重检查锁保证全局唯一),
   所有同步方法线程安全,可在多线程 worker 中并发调用;
 - 不要在运行中的事件循环内使用 `FreeSight`(会显式报错),请改用

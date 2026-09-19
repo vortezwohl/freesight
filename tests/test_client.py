@@ -18,6 +18,16 @@ def _count_calls(router: RouterTransport, fragment: str) -> int:
     return sum(1 for r in router.calls if fragment in str(r.url))
 
 
+def test_root_exports_both_clients() -> None:
+    """根包同时导出同步与异步双客户端(同层级 API,防止被误收窄)。"""
+    import freesignt
+
+    assert "FreeSight" in freesignt.__all__
+    assert "AsyncFreeSight" in freesignt.__all__
+    assert freesignt.AsyncFreeSight is AsyncFreeSight
+    assert freesignt.FreeSight is FreeSight
+
+
 async def test_cache_hit_marks_cached(client, router) -> None:
     """第二次同参调用命中缓存,不再发网络请求。"""
     router.add_json("v2ex.com/api/topics/hot", [{"title": "t"}])
