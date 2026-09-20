@@ -1,7 +1,7 @@
 """客户端门面:AsyncFreeSight(异步核心)与 FreeSight(同步桥)。
 
 人体工学设计:
-- 同一套方法面(fetch/search/describe/list_sources),异步版本可直接进
+- 同一套方法面(fetch/describe/list_sources),异步版本可直接进
   服务端事件循环,同步版本面向脚本与人;
 - 属性糖:client.itunes_search(term="notion") 等价于
   client.fetch("itunes_search", term="notion"),源名即方法名;
@@ -9,9 +9,9 @@
   refresh=True 可强制绕过缓存,ttl=秒数可临时覆盖缓存时间。
 
 职责边界:
-- search() 是"聚合检索":一次查询扇出到多个源,把各源完整结果装进
-  AggregateResult 原样返回;不做任何筛选、排序、去重或相关性判断,
-  这些完全交给调用方;
+- SDK 只做单渠道访问:每个源一次 fetch() 调用返回该源独立的
+  FetchResult;不提供跨源聚合检索,结果如何消费(筛选/排序/合并/
+  嵌入)完全交给调用方;
 - SDK 不做持久化存储;cache 参数可注入任何满足 CacheProtocol 的
   外部缓存实现(存储能力外包给调用方)。
 
@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import asyncio
 import threading
-import time
 from dataclasses import replace
 from typing import Any
 
@@ -35,7 +34,6 @@ from freesignt.core.cache import CacheProtocol, NullCache, SingleFlight, TTLCach
 from freesignt.core.errors import SyncClientInAsyncContextError
 from freesignt.core.http import DEFAULT_SEC_UA, DEFAULT_UA, HttpConfig, HttpEngine
 from freesignt.core.models import (
-    AggregateResult,
     FetchResult,
     SourceCategory,
     SourceInfo,
@@ -48,7 +46,6 @@ class AsyncFreeSight:
     用法:
         async with AsyncFreeSight() as client:
             result = await client.itunes_search(term="notion")
-            resp = await client.search("notion")
 
     Attributes:
         engine: 底层 HTTP 引擎(限流/重试治理)。
@@ -183,73 +180,6 @@ class AsyncFreeSight:
             return result
 
         return await self._singleflight.run(key, _factory)
-
-    async def search(
-        self,
-        query: str,
-        *,
-        sources: list[str] | None = None,
-        limit_per_source: int = 5,
-        refresh: bool = False,
-    ) -> AggregateResult:
-        """聚合检索:一次查询扇出到多个源,原样聚合各源完整结果。
-
-        SDK 只负责扇出与聚合,返回的 AggregateResult 不做任何筛选、
-        排序、去重或相关性判断——如何消费(过滤/排序/嵌入/摘要)完全
-        由调用方决定。扇出请求本身走 fetch 管线(缓存+单飞+限流),
-        热门查询词在缓存窗口内不重复打上游。
-
-        Args:
-            query: 查询词(产品名/公司名/关键词/域名皆可)。
-            sources: 参与源名称列表;None 用默认扇出集合
-                (search_default=True 的检索型源)。域名情报类源
-                (crt_sh/rdap_domain/common_crawl)需显式指定。
-            limit_per_source: 每源获取条数(经源的 limit 参数生效)。
-            refresh: True 时绕过缓存。
-
-        Returns:
-            AggregateResult(单源失败保留在该源 FetchResult,不影响整体)。
-
-        Raises:
-            ValueError: 指定了不支持关键词扇出的源(无 search_kwarg)。
-        """
-        if sources is None:
-            classes = registry.default_search_sources()
-        else:
-            classes = [registry.get(name) for name in sources]
-            unsearchable = [c.name for c in classes if c.search_kwarg is None]
-            if unsearchable:
-                searchable_names = [
-                    c.name for c in registry.all_sources().values() if c.search_kwarg
-                ]
-                raise ValueError(
-                    f"以下源不支持关键词扇出(无查询词参数): {unsearchable};"
-                    f"可用扇出源: {searchable_names}"
-                )
-        started = time.perf_counter()
-
-        async def _one(cls: Any) -> tuple[str, FetchResult]:
-            params: dict[str, Any] = {cls.search_kwarg: query, **cls.search_defaults}
-            if cls.limit_kwarg:
-                params[cls.limit_kwarg] = limit_per_source
-            try:
-                result = await self.fetch(cls.name, refresh=refresh, **params)
-            except Exception as exc:  # noqa: BLE001 - 参数校验等异常归为该源失败。
-                result = FetchResult(
-                    ok=False,
-                    status=None,
-                    latency_s=0.0,
-                    error=f"{type(exc).__name__}: {exc}",
-                    source=cls.name,
-                )
-            return cls.name, result
-
-        outcomes = await asyncio.gather(*(_one(cls) for cls in classes))
-        return AggregateResult(
-            query=query,
-            results={name: result for name, result in outcomes},
-            took_s=time.perf_counter() - started,
-        )
 
     # ---- 自省与观测 ----------------------------------------------------------
 
@@ -407,9 +337,7 @@ class FreeSight:
     用法:
         with FreeSight() as client:
             result = client.itunes_search(term="notion")
-            agg = client.search("notion")
-            for name, r in agg.results.items():
-                print(name, r.ok, r.error or "")
+            print(result.ok, result.error or "")
 
     线程安全;不可在运行中的事件循环内使用(改用 AsyncFreeSight)。
     """
@@ -436,24 +364,6 @@ class FreeSight:
         """同步 fetch,语义与 AsyncFreeSight.fetch 一致。"""
         return self._bridge.run(
             self._async.fetch(name, refresh=refresh, ttl=ttl, **params)
-        )
-
-    def search(
-        self,
-        query: str,
-        *,
-        sources: list[str] | None = None,
-        limit_per_source: int = 5,
-        refresh: bool = False,
-    ) -> AggregateResult:
-        """同步聚合检索,语义与 AsyncFreeSight.search 一致。"""
-        return self._bridge.run(
-            self._async.search(
-                query,
-                sources=sources,
-                limit_per_source=limit_per_source,
-                refresh=refresh,
-            )
         )
 
     def list_sources(self, category: SourceCategory | None = None) -> list[SourceInfo]:

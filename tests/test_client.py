@@ -10,7 +10,7 @@ import pytest
 from freesignt.core.cache import TTLCache
 from freesignt.core.client import AsyncFreeSight, FreeSight
 from freesignt.core.errors import SyncClientInAsyncContextError
-from tests.conftest import RouterTransport, install_default_search_routes
+from tests.conftest import RouterTransport
 
 
 def _count_calls(router: RouterTransport, fragment: str) -> int:
@@ -129,18 +129,15 @@ async def test_external_cache_injection() -> None:
 
 
 def test_sync_client_end_to_end() -> None:
-    """同步门面:fetch/search/上下文管理/线程桥全部可用。"""
+    """同步门面:fetch/属性糖/上下文管理/线程桥全部可用。"""
     router = RouterTransport()
-    install_default_search_routes(router)
+    router.add_json("hn.algolia.com", {"nbHits": 1, "hits": [{"objectID": "a1"}]})
+    router.add_json("itunes.apple.com/search", {"resultCount": 0, "results": []})
     with FreeSight(transport=router, rate_multiplier=1000.0) as client:
         result = client.hn_algolia(query="notion")
         assert result.ok and result.source == "hn_algolia"
-        agg = client.search("notion")
-        assert set(agg.ok_sources) == {
-            "itunes_search", "hn_algolia", "github_public", "npm_registry",
-            "pypi_metadata", "huggingface_hub", "bluesky", "uspto_trademark",
-            "steam_store",
-        }
+        result = client.fetch("itunes_search", term="notion")
+        assert result.ok and result.source == "itunes_search"
         snapshot = client.rate_snapshot()
         assert snapshot  # 各 host 治理器已建立
 
@@ -170,7 +167,7 @@ def test_sync_client_thread_safety() -> None:
     from concurrent.futures import ThreadPoolExecutor
 
     router = RouterTransport()
-    install_default_search_routes(router)
+    router.add_json("hn.algolia.com", {"nbHits": 0, "hits": []})
     client = FreeSight(transport=router, rate_multiplier=1000.0)
     try:
         with ThreadPoolExecutor(max_workers=4) as pool:

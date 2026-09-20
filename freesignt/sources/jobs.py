@@ -21,7 +21,6 @@ class GreenhouseJobsSource(BaseSource):
     rate_period_s = 60
     timeout = 30
     cache_ttl_s = 7200.0
-    search_kwarg = "company"
     description = "Greenhouse ATS 公开招聘板(职位/地点/部门/更新时间)"
 
     async def fetch(self, company: str) -> FetchResult:
@@ -45,7 +44,6 @@ class LeverJobsSource(BaseSource):
     rate_period_s = 60
     timeout = 30
     cache_ttl_s = 7200.0
-    search_kwarg = "company"
     description = "Lever ATS 公开招聘板(职位/地点/团队/远程标记)"
 
     async def fetch(self, company: str) -> FetchResult:

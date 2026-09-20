@@ -76,15 +76,6 @@ def names() -> list[str]:
     return list(_REGISTRY)
 
 
-def default_search_sources() -> list[type[BaseSource]]:
-    """统一搜索默认扇出集合(search_default=True 的源,注册序)。
-
-    Returns:
-        源类列表。
-    """
-    return [cls for cls in _REGISTRY.values() if cls.search_default]
-
-
 def catalogue() -> list[SourceInfo]:
     """全部源的元信息目录(人类查阅与 agent 发现工具共用)。
 

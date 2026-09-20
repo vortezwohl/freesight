@@ -24,9 +24,6 @@ class GithubPublicSource(BaseSource):
     rate_limit = 8
     rate_period_s = 60
     cache_ttl_s = 1800.0
-    search_kwarg = "query"
-    search_default = True
-    limit_kwarg = "per_page"
     description = "GitHub 匿名 REST(搜索 10/min,core 60/h;批量请用 ecosyste_ms)"
 
     async def fetch(
@@ -56,4 +53,3 @@ class GithubPublicSource(BaseSource):
             "https://api.github.com/search/repositories",
             params={"q": query, "per_page": per_page},
         )
-

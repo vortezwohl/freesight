@@ -2,7 +2,7 @@
 
 覆盖 infra_intel(7 源)与 threat_intel(2 源):正常归一化、上游错误
 形态识别(hackertarget 错误文本/certspotter 错误对象/CDX 空存档)、
-参数校验 ValueError,以及域名情报模式的聚合扇出。
+参数校验 ValueError,以及 hudsonrock 空数据形态的容错。
 """
 
 from __future__ import annotations
@@ -190,30 +190,3 @@ async def test_hudsonrock_emails_merge_and_null_fields(client, router) -> None:
         empty = await c2.fetch("hudsonrock", domain="example.com")
     assert empty.ok
     assert empty.data["emails"] == [] and empty.data["infections_count"] == 0
-
-
-async def test_domain_intel_fanout_with_new_sources(client, router) -> None:
-    """域名情报模式:新源参与显式指定源的聚合扇出(含部分失败容忍)。"""
-    router.add_json("api.subdomain.center", ["a.example.com"])
-    router.add_json("cavalier.hudsonrock.com", {
-        "corporates": None, "infections": None, "employees": None,
-    })
-    # rapiddns 不注册桩 -> 走 404 失败路径,验证部分失败不中断聚合。
-    agg = await client.search(
-        "example.com",
-        sources=["subdomain_center", "hudsonrock", "rapiddns"],
-    )
-    assert agg.ok_sources == ["subdomain_center", "hudsonrock"]
-    assert agg.failed_sources == ["rapiddns"]
-    assert agg.results["subdomain_center"].data["count"] == 1
-
-
-async def test_new_sources_not_in_default_search_set(client, router) -> None:
-    """新源均为 search_default=False:不进入默认扇出,不打扰既有语义。"""
-    from freesignt.core import registry
-    for name in ("rapiddns", "subdomain_center", "otx_passive_dns", "hackertarget",
-                 "shodan_internetdb", "certspotter", "wayback_cdx", "urlscan", "hudsonrock"):
-        info = registry.get(name).info()
-        assert info.searchable, name
-        assert not info.search_default, name
-        assert info.category.value == "free_nokey", name

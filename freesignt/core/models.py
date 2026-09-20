@@ -1,11 +1,12 @@
-"""统一数据模型:获取结果、聚合结果与源元信息。
+"""统一数据模型:获取结果与源元信息。
 
 本模块是 freesignt 的公共数据契约层,不依赖任何 IO 设施:
 - FetchResult: 单次数据获取的统一返回结构(兼容原 Industry-Research 形态,
   在此基础上增加 cached / fetched_at / meta 观测字段);
-- AggregateResult: 聚合检索的整体返回,只做"把各源结果装进一个容器",
-  不做任何筛选、排序或相关性判断——那是调用方的职责;
 - SourceInfo: 源的静态元信息(供人类查阅与高级调用方二次封装)。
+
+SDK 只做单渠道访问,不存在跨源聚合结构;多源结果的合并、筛选与排序
+由调用方基于各源独立的 FetchResult 自行完成。
 """
 
 from __future__ import annotations
@@ -77,47 +78,6 @@ class FetchResult:
 
 
 @dataclass
-class AggregateResult:
-    """聚合检索的整体返回:各源完整结果的容器。
-
-    设计边界:SDK 只负责把多个源的结果原样聚合到一起(含失败源的降级
-    信息),不做任何筛选、排序、去重或相关性判断——这些完全交给调用方。
-    results 的键序为参与源列表顺序(确定性的,不隐含重要性排序)。
-
-    Attributes:
-        query: 原始查询词。
-        results: {源名: FetchResult},data 为该源返回的全部业务数据。
-        took_s: 整体耗时(秒,含网络与缓存命中)。
-    """
-
-    query: str
-    results: dict[str, FetchResult] = field(default_factory=dict)
-    took_s: float = 0.0
-
-    @property
-    def ok_sources(self) -> list[str]:
-        """本次获取成功的源名称列表(列表序)。"""
-        return [name for name, r in self.results.items() if r.ok]
-
-    @property
-    def failed_sources(self) -> list[str]:
-        """本次获取失败的源名称列表(错误详情见对应 FetchResult.error)。"""
-        return [name for name, r in self.results.items() if not r.ok]
-
-    def to_dict(self) -> dict[str, Any]:
-        """导出为可直接 JSON 序列化的 dict。
-
-        Returns:
-            {query, took_s, results: {源名: FetchResult.to_dict()}}。
-        """
-        return {
-            "query": self.query,
-            "took_s": round(self.took_s, 4),
-            "results": {k: v.to_dict() for k, v in self.results.items()},
-        }
-
-
-@dataclass
 class SourceInfo:
     """源的静态元信息(注册表导出给人看,也供高级调用方二次封装取用)。
 
@@ -130,8 +90,6 @@ class SourceInfo:
         timeout: 单请求超时秒数。
         max_retries: 网络层异常最大重试次数。
         cache_ttl_s: 建议缓存 TTL(秒);0 表示不缓存。
-        searchable: 是否可参与聚合检索(有可用的关键词参数)。
-        search_default: 是否进入默认扇出集合。
         input_schema: fetch 参数的 JSON Schema。
         doc: fetch 的完整中文 docstring。
     """
@@ -144,8 +102,6 @@ class SourceInfo:
     timeout: int = 20
     max_retries: int = 2
     cache_ttl_s: float = 600.0
-    searchable: bool = False
-    search_default: bool = False
     input_schema: dict[str, Any] = field(default_factory=dict)
     doc: str = ""
 
@@ -160,7 +116,5 @@ class SourceInfo:
             "timeout": self.timeout,
             "max_retries": self.max_retries,
             "cache_ttl_s": self.cache_ttl_s,
-            "searchable": self.searchable,
-            "search_default": self.search_default,
             "input_schema": self.input_schema,
         }

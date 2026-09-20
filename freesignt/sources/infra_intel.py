@@ -29,7 +29,6 @@ class RapidDnsSource(BaseSource):
     rate_period_s = 60
     timeout = 30
     cache_ttl_s = 21600.0
-    search_kwarg = "domain"
     description = "RapidDNS 子域聚合(HTML 表格解析,含 A/AAAA 记录的 IP 映射)"
 
     async def fetch(self, domain: str) -> FetchResult:
@@ -82,7 +81,6 @@ class SubdomainCenterSource(BaseSource):
     rate_limit = 10
     rate_period_s = 60
     cache_ttl_s = 21600.0
-    search_kwarg = "domain"
     description = "Subdomain Center 子域聚合 API(JSON 直出)"
 
     async def fetch(self, domain: str) -> FetchResult:
@@ -124,7 +122,6 @@ class OtxPassiveDnsSource(BaseSource):
     rate_limit = 20
     rate_period_s = 60
     cache_ttl_s = 21600.0
-    search_kwarg = "domain"
     description = "AlienVault OTX 被动 DNS 历史(域名历史解析记录去重)"
 
     async def fetch(self, domain: str) -> FetchResult:
@@ -174,7 +171,6 @@ class HackerTargetSource(BaseSource):
     rate_limit = 5
     rate_period_s = 60
     cache_ttl_s = 21600.0
-    search_kwarg = "domain"
     description = "HackerTarget hostsearch(免 key 每日限量,子域+IP 映射)"
 
     async def fetch(self, domain: str) -> FetchResult:
@@ -228,7 +224,6 @@ class ShodanInternetdbSource(BaseSource):
     rate_limit = 30
     rate_period_s = 60
     cache_ttl_s = 86400.0
-    search_kwarg = "ip"
     description = "Shodan InternetDB IP 画像(开放端口/CPE/漏洞标签,免 key)"
 
     async def fetch(self, ip: str) -> FetchResult:
@@ -264,7 +259,6 @@ class CertspotterSource(BaseSource):
     rate_period_s = 60
     timeout = 30
     cache_ttl_s = 21600.0
-    search_kwarg = "domain"
     description = "Certificate Spotter CT 日志(crt_sh 的冗余源,含子域展开)"
 
     async def fetch(self, domain: str) -> FetchResult:
@@ -344,8 +338,6 @@ class WaybackCdxSource(BaseSource):
     rate_period_s = 60
     timeout = 30
     cache_ttl_s = 86400.0
-    search_kwarg = "domain"
-    limit_kwarg = "limit"
     description = "Wayback Machine CDX 存档索引(域名下历史 URL 清单)"
 
     async def fetch(self, domain: str, limit: int = 100) -> FetchResult:

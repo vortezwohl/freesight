@@ -54,7 +54,6 @@ class CrtShSource(BaseSource):
     timeout = 90
     max_retries = 3
     cache_ttl_s = 86400.0
-    search_kwarg = "domain"
     description = "CT 证书透明日志子域名发现(慢源:串行/长超时/指数退避)"
 
     async def fetch(self, domain: str) -> FetchResult:

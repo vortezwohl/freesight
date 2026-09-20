@@ -68,23 +68,10 @@ def test_source_info_complete() -> None:
         assert info.description
         assert info.rate_limit > 0 and info.rate_period_s > 0
         assert info.timeout >= 5
-        assert isinstance(info.searchable, bool)
         schema = info.input_schema
         assert schema["type"] == "object"
         assert isinstance(schema["properties"], dict)
         assert isinstance(schema["required"], list)
-
-
-def test_default_search_sources() -> None:
-    """默认扇出集合为声明的检索型源(9 个)。"""
-    defaults = registry.default_search_sources()
-    assert len(defaults) == 9
-    assert all(cls.search_kwarg for cls in defaults)
-    assert {cls.name for cls in defaults} == {
-        "itunes_search", "hn_algolia", "github_public", "npm_registry",
-        "pypi_metadata", "huggingface_hub", "bluesky", "uspto_trademark",
-        "steam_store",
-    }
 
 
 def test_duplicate_name_rejected() -> None:

@@ -22,9 +22,6 @@ class ITunesSearchSource(BaseSource):
     rate_limit = 50
     rate_period_s = 60
     cache_ttl_s = 3600.0
-    search_kwarg = "term"
-    search_default = True
-    limit_kwarg = "limit"
     description = "App Store 应用元数据搜索,支持多国区与软件/音乐/电影等实体"
 
     async def fetch(

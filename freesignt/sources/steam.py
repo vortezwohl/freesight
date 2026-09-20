@@ -27,8 +27,6 @@ class SteamStoreSource(BaseSource):
     timeout = 30
     cache_ttl_s = 3600.0
     cooldown_s = 300.0  # 实测 429 后需约 5 分钟冷却
-    search_kwarg = "term"
-    search_default = True
     description = "Steam 商店搜索/应用详情(appdetails 隐性限速约 200/5min,429 需冷却 5min)"
 
     async def fetch(

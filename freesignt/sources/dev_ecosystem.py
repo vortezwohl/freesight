@@ -20,9 +20,6 @@ class NpmRegistrySource(BaseSource):
     rate_limit = 60
     rate_period_s = 60
     cache_ttl_s = 1800.0
-    search_kwarg = "text"
-    search_default = True
-    limit_kwarg = "size"
     description = "npm 包搜索(月下载量/依赖数)"
 
     async def fetch(self, text: str, size: int = 20) -> FetchResult:
@@ -49,8 +46,6 @@ class PyPiSource(BaseSource):
     rate_limit = 60
     rate_period_s = 60
     cache_ttl_s = 3600.0
-    search_kwarg = "package"
-    search_default = True
     description = "PyPI 包元数据(版本/依赖/分类)"
 
     async def fetch(self, package: str) -> FetchResult:
@@ -75,7 +70,6 @@ class PyPiStatsSource(BaseSource):
     rate_limit = 10
     rate_period_s = 60
     cache_ttl_s = 21600.0
-    search_kwarg = "package"
     description = "PyPI 包最近 30 天下载量"
 
     async def fetch(self, package: str) -> FetchResult:
@@ -169,9 +163,6 @@ class HuggingFaceSource(BaseSource):
     rate_limit = 100
     rate_period_s = 60  # 实测窗口 500/5min ≈ 100/min
     cache_ttl_s = 1800.0
-    search_kwarg = "search"
-    search_default = True
-    limit_kwarg = "limit"
     schema_overrides = {
         "kind": {"enum": ["models", "datasets", "spaces"]},
     }
@@ -207,4 +198,3 @@ class HuggingFaceSource(BaseSource):
             params["sort"] = sort
             params["direction"] = -1  # 降序(Hub API 约定数值排序需配方向)
         return await self._get(f"https://huggingface.co/api/{kind}", params=params)
-

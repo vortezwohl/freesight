@@ -22,7 +22,6 @@ class SecEdgarSource(BaseSource):
     rate_period_s = 60  # 政策 10/s,批量采集取 8/min 保守值
     timeout = 30
     cache_ttl_s = 1800.0
-    search_kwarg = "query"
     description = "SEC EDGAR 提交历史(CIK)与全文检索(Form D 挖 stealth 融资)"
 
     def _build_headers(self) -> dict[str, str]:
@@ -72,9 +71,6 @@ class UsptoTrademarkSource(BaseSource):
     rate_period_s = 60
     timeout = 30
     cache_ttl_s = 21600.0
-    search_kwarg = "search_text"
-    search_default = True
-    limit_kwarg = "rows"
     description = "USPTO 商标检索(发布前品牌名先行信号)"
 
     async def fetch(self, search_text: str, rows: int = 20) -> FetchResult:
@@ -101,7 +97,6 @@ class RdapDomainSource(BaseSource):
     rate_limit = 60
     rate_period_s = 60
     cache_ttl_s = 86400.0
-    search_kwarg = "domain"
     description = ".com/.net 域名 RDAP 注册情报(新域名=新产品线索)"
 
     async def fetch(self, domain: str, tld_api: str | None = None) -> FetchResult:
@@ -138,7 +133,6 @@ class CommonCrawlSource(BaseSource):
     rate_period_s = 60
     timeout = 30
     cache_ttl_s = 86400.0
-    search_kwarg = "url"
     description = "Common Crawl 域名收录索引(快照时间/URL/MIME,批量发现用)"
 
     async def fetch(

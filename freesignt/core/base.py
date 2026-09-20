@@ -8,9 +8,11 @@
 本版本的增强:
 - 全异步(_get 基于 HttpEngine);
 - 新增缓存 TTL、限流键覆盖、冷却覆盖、突发额度等声明项;
-- 新增 search_kwarg / search_default / limit_kwarg 声明,驱动聚合检索扇出;
 - 参数 JSON Schema 从签名与 docstring 自动派生(schema_overrides 兜底),
   供人类查阅与高级调用方二次封装(agent 工具等)自行取用。
+
+每个源是完全独立的渠道:fetch() 的参数与返回由源自行定义,
+SDK 不做任何跨源扇出或聚合。
 
 限速值为 2026-09-09 实测快照(响应头/行为实测);平台可能随时调整,
 生产环境应结合响应头自适应机制(见 ratelimit.py)动态应对。
@@ -45,11 +47,6 @@ class BaseSource:
         limit_key: 限流键覆盖;None 按 URL host(同 host 多源共享预算)。
         cooldown_s: 429 冷却秒数覆盖(无 Retry-After 头时使用,如 Steam 300)。
         description: 源的一句话中文说明。
-        search_kwarg: 聚合检索时接收查询词的 fetch 参数名;None 表示
-            该源无法参与关键词扇出(浏览型/复合参数型源)。
-        search_default: 是否进入 client.search() 的默认扇出集合。
-        limit_kwarg: 聚合检索时控制条数的 fetch 参数名;None 表示源无此参数。
-        search_defaults: 聚合检索扇出时附加的默认参数(如 method=post_search)。
         schema_overrides: 参数 schema 补充片段(如 enum 取值),详见 schema.py。
     """
 
@@ -64,10 +61,6 @@ class BaseSource:
     limit_key: str | None = None
     cooldown_s: float | None = None
     description: str = ""
-    search_kwarg: str | None = None
-    search_default: bool = False
-    limit_kwarg: str | None = None
-    search_defaults: ClassVar[dict[str, Any]] = {}
     schema_overrides: ClassVar[dict[str, dict[str, Any]]] = {}
 
     def __init__(self, engine: HttpEngine | None = None) -> None:
@@ -102,11 +95,6 @@ class BaseSource:
         """按声明限速换算的最小调用间隔(秒,未含全局缩放系数)。"""
         return self.rate_period_s / max(self.rate_limit, 1)
 
-    @property
-    def searchable(self) -> bool:
-        """是否可参与聚合检索(存在接收查询词的参数)。"""
-        return self.search_kwarg is not None
-
     @classmethod
     def input_schema(cls) -> dict[str, Any]:
         """派生 fetch 参数的 JSON Schema(人读参数表与高级调用方封装共用)。"""
@@ -124,8 +112,6 @@ class BaseSource:
             timeout=cls.timeout,
             max_retries=cls.max_retries,
             cache_ttl_s=cls.cache_ttl_s,
-            searchable=cls.search_kwarg is not None,
-            search_default=cls.search_default,
             input_schema=cls.input_schema(),
             doc=(cls.fetch.__doc__ or "").strip(),
         )

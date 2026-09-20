@@ -20,9 +20,6 @@ class HackerNewsAlgoliaSource(BaseSource):
     rate_period_s = 60
     timeout = 25
     cache_ttl_s = 600.0
-    search_kwarg = "query"
-    search_default = True
-    limit_kwarg = "hits_per_page"
     schema_overrides = {
         "tags": {
             "description": "标签过滤:story(帖子)/show_hn/comment/ask_hn,多值逗号分隔",

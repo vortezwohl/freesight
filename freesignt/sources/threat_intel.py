@@ -24,8 +24,6 @@ class UrlscanSearchSource(BaseSource):
     rate_limit = 10
     rate_period_s = 60
     cache_ttl_s = 3600.0
-    search_kwarg = "domain"
-    limit_kwarg = "limit"
     description = "urlscan.io 公开扫描记录(页面 URL/IP/ASN/扫描时间)"
 
     async def fetch(self, domain: str, limit: int = 20) -> FetchResult:
@@ -104,7 +102,6 @@ class HudsonrockSource(BaseSource):
     rate_limit = 5
     rate_period_s = 60
     cache_ttl_s = 86400.0
-    search_kwarg = "domain"
     description = "Hudson Rock infostealer 域名泄漏画像(企业感染/员工邮箱,涉敏感数据)"
 
     async def fetch(self, domain: str) -> FetchResult:

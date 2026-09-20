@@ -21,9 +21,6 @@ class BlueskySource(BaseSource):
     rate_limit = 30
     rate_period_s = 60
     cache_ttl_s = 600.0
-    search_kwarg = "q"
-    search_default = True
-    limit_kwarg = "limit"
     schema_overrides = {
         "method": {"enum": ["actor_search", "post_search"]},
     }
