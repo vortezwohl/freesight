@@ -247,7 +247,7 @@ class ShodanInternetdbSource(BaseSource):
 
 
 class CertspotterSource(BaseSource):
-    """Certificate Spotter CT 日志:cert.sh 的第二 CT 来源,基础查询免 key。
+    """Certificate Spotter CT 日志:crt.sh 的第二 CT 来源,基础查询免 key。
 
     免 key 档有小时级配额,配额耗尽时服务返回 {"code": ...} 错误对象
     而非 HTTP 429,须在源内识别。

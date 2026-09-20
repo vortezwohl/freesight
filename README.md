@@ -1,5 +1,7 @@
 # freesight
 
+> 仓库/发布名为 `freesight`,导入包名为 `freesignt`(`import freesignt`)。
+
 免费竞品调研**多渠道数据访问** SDK:封装 34 个免费免 key 公开数据源,
 每个渠道一层薄的独立访问封装,只负责一件事——
 
@@ -159,8 +161,9 @@ client = freesignt.FreeSight(cache=MyRedisCache())   # 或 cache=None 关闭缓�
 
 - `AsyncFreeSight` 绑定创建它的事件循环;跨线程/脚本场景用根包的
   `FreeSight`;
-- `FreeSight` 内部持有一个专属后台事件循环线程(双重检查锁保证全局唯一),
-  所有同步方法线程安全,可在多线程 worker 中并发调用;
+- `FreeSight` 内部持有一个专属后台事件循环线程(双重检查锁保证该客户端
+  实例内唯一,多个 `FreeSight` 实例会各起一条后台线程),所有同步方法线程安全,
+  可在多线程 worker 中并发调用;
 - 不要在运行中的事件循环内使用 `FreeSight`(会显式报错),请改用
   `AsyncFreeSight`;
 - 缓存返回的对象视为只读;需要修改请自行深拷贝。

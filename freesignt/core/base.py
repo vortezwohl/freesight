@@ -124,7 +124,7 @@ class BaseSource:
         Returns:
             含 User-Agent 的请求头 dict。
         """
-        ua = self.engine.config.user_agent if self.engine else "FreeSight/0.1"
+        ua = self.engine.config.user_agent if self.engine else "FreeSight/0.3"
         return {"User-Agent": ua}
 
     async def _get(

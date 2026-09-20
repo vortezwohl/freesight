@@ -15,7 +15,7 @@ from freesignt.core.models import FetchResult, SourceCategory
 
 
 class ItchIoFeedSource(BaseSource):
-    """itch.io RSS:独立游戏最新发布流(原始 XML,to_hits 顺带解析条目)。"""
+    """itch.io RSS:独立游戏最新发布流(返回原始 XML 文本,条目解析交给调用方)。"""
 
     name = "itchio_feed"
     category = SourceCategory.FREE_NOKEY
@@ -25,7 +25,7 @@ class ItchIoFeedSource(BaseSource):
     schema_overrides = {
         "feed": {"enum": ["newest", "popular", "free"]},
     }
-    description = "itch.io 最新独立游戏 RSS(原始 XML + 归一化条目)"
+    description = "itch.io 最新独立游戏 RSS(原始 XML 文本)"
 
     async def fetch(self, feed: str = "newest") -> FetchResult:
         """拉取 itch.io 游戏 RSS。
@@ -34,7 +34,8 @@ class ItchIoFeedSource(BaseSource):
             feed: newest(最新)/popular(热门)/free(免费)。
 
         Returns:
-            data 为 RSS XML 原始文本(字符串);to_hits 会解析出条目。
+            data 为 RSS XML 原始文本(字符串);SDK 不做条目解析,
+            需要结构化条目时由调用方自行解析 XML。
         """
         return await self._get(f"https://itch.io/games/{feed}.xml")
 

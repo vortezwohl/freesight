@@ -24,7 +24,7 @@ class BlueskySource(BaseSource):
     schema_overrides = {
         "method": {"enum": ["actor_search", "post_search"]},
     }
-    description = "Bluesky 公共检索(账号搜索/帖子全文检索/趋势)"
+    description = "Bluesky 公共检索(账号搜索/帖子全文检索)"
 
     async def fetch(self, q: str, method: str = "actor_search", limit: int = 10) -> FetchResult:
         """按关键词检索 Bluesky 账号或帖子。

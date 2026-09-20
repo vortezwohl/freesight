@@ -92,7 +92,7 @@ class EcosysteMsSource(BaseSource):
     rate_limit = 100
     rate_period_s = 60  # 匿名实测 5000/h,取 100/min 保守值
     cache_ttl_s = 3600.0
-    description = "开源生态镜像元数据(仓库/依赖),GitHub 匿名批量的替代通道"
+    description = "开源生态镜像仓库元数据,GitHub 匿名批量的替代通道"
 
     async def fetch(self, host: str = "GitHub", owner: str = "", repo: str = "") -> FetchResult:
         """拉取仓库级镜像元数据。
