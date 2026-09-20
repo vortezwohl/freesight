@@ -9,10 +9,10 @@ from freesignt.core.models import SourceCategory
 
 
 def test_all_25_sources_registered() -> None:
-    """25 个源全部注册且名称唯一。"""
+    """34 个源全部注册且名称唯一。"""
     names = registry.names()
-    assert len(names) == 25
-    assert len(set(names)) == 25
+    assert len(names) == 34
+    assert len(set(names)) == 34
 
 
 def test_expected_source_names_present() -> None:
@@ -35,6 +35,10 @@ def test_expected_source_names_present() -> None:
         "sec_edgar", "uspto_trademark", "rdap_domain", "common_crawl",
         # steam / misc
         "steam_store", "steamspy", "itchio_feed", "crt_sh",
+        # infra_intel / threat_intel
+        "rapiddns", "subdomain_center", "otx_passive_dns", "hackertarget",
+        "shodan_internetdb", "certspotter", "wayback_cdx",
+        "urlscan", "hudsonrock",
     }
     assert expected == set(registry.names())
 
@@ -42,7 +46,7 @@ def test_expected_source_names_present() -> None:
 def test_all_free_nokey_category() -> None:
     """当前全部源归入 free_nokey 分类。"""
     sources = registry.by_category(SourceCategory.FREE_NOKEY)
-    assert len(sources) == 25
+    assert len(sources) == 34
 
 
 def test_get_unknown_raises_with_hint() -> None:

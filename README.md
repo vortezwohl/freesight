@@ -1,6 +1,6 @@
 # freesight
 
-免费竞品调研**数据聚合** SDK:聚合 25 个免费免 key 公开数据源,只负责三件事——
+免费竞品调研**数据聚合** SDK:聚合 34 个免费免 key 公开数据源,只负责三件事——
 
 1. **聚合抓取**:按 host 自适应限流 + 429 冷却 + TTL 缓存 + 单飞请求合并,
    下游无感获取信息;
@@ -64,7 +64,7 @@ from freesignt.core.http import HttpEngine, HttpConfig
 结果筛选——SDK 通过 `describe()` / `SourceInfo.input_schema` 提供每个源
 的参数 JSON Schema 与元信息,供二次封装取用,但封装本身不属于 SDK。
 
-## 数据源一览(25 个,全部免费免 key)
+## 数据源一览(34 个,全部免费免 key)
 
 | 领域 | 源 | 说明 |
 | --- | --- | --- |
@@ -76,6 +76,12 @@ from freesignt.core.http import HttpEngine, HttpConfig
 | 法定披露 | `sec_edgar` / `uspto_trademark` / `rdap_domain` / `common_crawl` | SEC/商标/域名/全网快照 |
 | 游戏 | `steam_store` / `steamspy` / `itchio_feed` | Steam 搜索与估算、独立游戏 RSS |
 | 基础设施 | `crt_sh` | CT 证书日志子域名发现(预发布信号) |
+| 基础设施足迹 | `rapiddns` / `subdomain_center` / `otx_passive_dns` / `hackertarget` / `shodan_internetdb` / `certspotter` / `wayback_cdx` | 子域聚合/被动 DNS/子域+IP 映射/IP 端口画像/CT 冗余源/存档 URL 索引 |
+| 威胁情报 | `urlscan` / `hudsonrock` | 公开页面扫描记录/IP-ASN;infostealer 域名泄漏画像(涉敏感数据,调用方自负合规) |
+
+> 基础设施足迹与威胁情报 9 源的端点行为参照 theHarvester 社区实测
+> (2026-09)与各服务公开文档,限速为保守声明待实测复核;`shodan_internetdb`
+> 入参为 IP(本 SDK 不做 DNS 解析),`hackertarget` 免 key 每日限量。
 
 ## 聚合检索的语义
 
@@ -98,7 +104,11 @@ agg.to_dict()      # 整体导出 JSON
 - 域名情报模式(把域名当查询词,显式指定源):
 
 ```python
-agg = client.search("openai.com", sources=["crt_sh", "rdap_domain", "common_crawl"])
+agg = client.search(
+    "openai.com",
+    sources=["crt_sh", "rdap_domain", "rapiddns", "certspotter",
+             "otx_passive_dns", "urlscan", "hudsonrock"],
+)
 ```
 
 ## C 端高并发设计
@@ -156,12 +166,12 @@ client = freesignt.FreeSight(cache=MyRedisCache())   # 或 cache=None 关闭缓�
 
 ```bash
 uv sync                 # 安装依赖(含 dev)
-uv run pytest           # 74 个离线单测(httpx MockTransport,不依赖真实网络)
+uv run pytest           # 86 个离线单测(httpx MockTransport,不依赖真实网络)
 uv run ruff check .     # lint
 ```
 
 测试覆盖:注册表/Schema 派生/令牌桶与冷却/限速头解析/缓存与单飞/
-25 源抓取与源内归一化/聚合检索(含部分失败容错)/同步桥线程安全。
+34 源抓取与源内归一化/聚合检索(含部分失败容错)/同步桥线程安全。
 
 ## 说明与边界
 
