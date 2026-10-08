@@ -1,10 +1,11 @@
 [project]
 name = "freesight"
-version = "0.3.0"
-description = "免费竞品调研多渠道数据访问 SDK:封装 34 个免费免 key 公开数据源,单渠道薄访问封装(按 host 自适应限流/429 冷却/TTL 缓存/单飞合并),跨源聚合与筛选交给调用方"
+version = "0.4.0"
+description = "免费竞品调研多渠道数据访问 SDK:封装 75 个免费免 key 公开数据源,单渠道薄访问封装(按 host 自适应限流/429 冷却/TTL 缓存/单飞合并),跨源聚合与筛选交给调用方"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "ddgs>=9.16.0",
     "h2>=4.4.1",
     "httpx>=0.28.1",
 ]

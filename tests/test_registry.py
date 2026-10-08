@@ -8,15 +8,15 @@ from freesignt.core.errors import SourceNotFoundError
 from freesignt.core.models import SourceCategory
 
 
-def test_all_25_sources_registered() -> None:
-    """34 个源全部注册且名称唯一。"""
+def test_all_75_sources_registered() -> None:
+    """75 个源全部注册且名称唯一。"""
     names = registry.names()
-    assert len(names) == 34
-    assert len(set(names)) == 34
+    assert len(names) == 75
+    assert len(set(names)) == 75
 
 
 def test_expected_source_names_present() -> None:
-    """关键源名称齐全(按原 datasource 模块逐组抽查)。"""
+    """关键源名称齐全(按 sources 各模块逐组核对)。"""
     expected = {
         # itunes
         "itunes_search", "itunes_reviews", "itunes_charts",
@@ -39,6 +39,25 @@ def test_expected_source_names_present() -> None:
         "rapiddns", "subdomain_center", "otx_passive_dns", "hackertarget",
         "shodan_internetdb", "certspotter", "wayback_cdx",
         "urlscan", "hudsonrock",
+        # search_engines
+        "ddg_search", "searxng", "baidu", "yahoo", "mojeek",
+        "wikipedia", "wikidata", "gdelt",
+        # web_fetch
+        "jina_reader", "allorigins", "codetabs", "corsproxy",
+        # corp_registry
+        "jp_houjin_bangou", "fr_sirene", "fr_bodacc", "no_brreg", "fdic_banks",
+        # venture
+        "yc_companies", "sec_form_d", "signal_nfx",
+        # macro_stats
+        "worldbank", "eurostat", "oecd", "imf", "cn_stats",
+        # product_community
+        "discourse", "fdroid",
+        # social_feed
+        "reddit", "youtube_rss", "google_news", "rsshub", "lobsters",
+        # academic
+        "crossref", "openalex", "arxiv",
+        # pkg_ecosystem
+        "rubygems", "crates", "packagist", "nuget", "dockerhub", "repology",
     }
     assert expected == set(registry.names())
 
@@ -46,7 +65,7 @@ def test_expected_source_names_present() -> None:
 def test_all_free_nokey_category() -> None:
     """当前全部源归入 free_nokey 分类。"""
     sources = registry.by_category(SourceCategory.FREE_NOKEY)
-    assert len(sources) == 34
+    assert len(sources) == 75
 
 
 def test_get_unknown_raises_with_hint() -> None:

@@ -1,7 +1,9 @@
 """freesignt:免费竞品调研多渠道数据访问 SDK。
 
-封装 34 个免费免 key 公开数据源(App Store/HackerNews/GitHub/开发者
-生态/招聘板/社媒/法定披露/Steam/基础设施足迹/威胁情报等),只做一件事:
+封装 75 个免费免 key 公开数据源(App Store/HackerNews/GitHub/开发者
+生态/招聘板/社媒/法定披露/Steam/基础设施足迹/威胁情报/通用搜索引擎/
+网页获取代理/各国公司注册/风投目录/宏观统计/Discourse 社区/内容流/
+学术文献/包生态等),只做一件事:
 - 每个渠道一层薄的独立访问封装(限流 + 429 冷却 + TTL 缓存 + 单飞合并
   + 源内结构归一化),fetch 一次返回该源独立的 FetchResult。
 
@@ -35,7 +37,7 @@ from freesignt.core.cache import CacheProtocol
 from freesignt.core.client import AsyncFreeSight, FreeSight
 from freesignt.core.models import FetchResult
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "AsyncFreeSight",

@@ -2,7 +2,7 @@
 
 > 仓库/发布名为 `freesight`,导入包名为 `freesignt`(`import freesignt`)。
 
-免费竞品调研**多渠道数据访问** SDK:封装 34 个免费免 key 公开数据源,
+免费竞品调研**多渠道数据访问** SDK:封装 75 个免费免 key 公开数据源,
 每个渠道一层薄的独立访问封装,只负责一件事——
 
 **单渠道取数**:每个源独立 fetch,按 host 自适应限流 + 429 冷却 +
@@ -12,9 +12,10 @@ TTL 缓存 + 单飞请求合并,返回该源独立的 `FetchResult`。
 结果的合并、筛选、排序、语义判断全部交给调用方。
 
 **明确不做的**(全部交给调用方):跨源聚合检索、信息筛选、排序、
-语义/相关性判断、agent 工具封装、持久化存储。SDK 因此非常轻:
-Python >= 3.13,运行时依赖仅 `httpx` + `h2`;缓存协议(CacheProtocol)
-可外接,调用方可借此实现自己的持久化缓存。
+语义/相关性判断、agent 工具封装、持久化存储。SDK 因此很轻:
+Python >= 3.13,运行时依赖仅 `httpx` + `h2` + `ddgs`(DuckDuckGo
+检索的浏览器指纹库);缓存协议(CacheProtocol)可外接,调用方可
+借此实现自己的持久化缓存。
 
 ## 安装
 
@@ -65,7 +66,7 @@ from freesignt.core.http import HttpEngine, HttpConfig
 结果筛选——SDK 通过 `describe()` / `SourceInfo.input_schema` 提供每个源
 的参数 JSON Schema 与元信息,供二次封装取用,但封装本身不属于 SDK。
 
-## 数据源一览(34 个,全部免费免 key)
+## 数据源一览(75 个,全部免费免 key)
 
 | 领域 | 源 | 说明 |
 | --- | --- | --- |
@@ -79,10 +80,22 @@ from freesignt.core.http import HttpEngine, HttpConfig
 | 基础设施 | `crt_sh` | CT 证书日志子域名发现(预发布信号) |
 | 基础设施足迹 | `rapiddns` / `subdomain_center` / `otx_passive_dns` / `hackertarget` / `shodan_internetdb` / `certspotter` / `wayback_cdx` | 子域聚合/被动 DNS/子域+IP 映射/IP 端口画像/CT 冗余源/存档 URL 索引 |
 | 威胁情报 | `urlscan` / `hudsonrock` | 公开页面扫描记录/IP-ASN;infostealer 域名泄漏画像(涉敏感数据,调用方自负合规) |
+| 通用搜索 | `ddg_search` / `searxng` / `baidu` / `yahoo` / `mojeek` / `wikipedia` / `wikidata` / `gdelt` | DuckDuckGo(ddgs 库)/元搜索实例/三 SERP/维基检索/SPARQL/全球新闻索引 |
+| 网页获取 | `jina_reader` / `allorigins` / `codetabs` / `corsproxy` | 无头渲染转 Markdown(r.jina.ai)/三个免 key 内容代理 |
+| 公司注册 | `jp_houjin_bangou` / `fr_sirene` / `fr_bodacc` / `no_brreg` / `fdic_banks` | 日本法人番号/法国企业检索(Sirene 同源)/法国法定公告/挪威注册局/美国银行库 |
+| 风投创业 | `yc_companies` / `sec_form_d` / `signal_nfx` | YC 目录(yc-oss 静态 JSON)/SEC Form D 融资披露/NFX 投资人列表 |
+| 宏观统计 | `worldbank` / `eurostat` / `oecd` / `imf` / `cn_stats` | 世行/欧盟统计局/OECD/IMF SDMX/中国国家统计局(反爬,尽力而为) |
+| 产品社区 | `discourse` / `fdroid` | 任意 Discourse 论坛 JSON/F-Droid 应用详情 |
+| 内容流 | `reddit` / `youtube_rss` / `google_news` / `rsshub` / `lobsters` | Reddit(json/rss,匿名限速严格)/YouTube RSS/Google News RSS/RSSHub 路由/Lobsters |
+| 学术文献 | `crossref` / `openalex` / `arxiv` | 1.5 亿 DOI/2.5 亿实体/预印本(均免 key,mailto 可进礼貌池) |
+| 包生态 | `rubygems` / `crates` / `packagist` / `nuget` / `dockerhub` / `repology` | Ruby/Rust/PHP/.NET 包与 Docker 镜像/跨发行版版本聚合 |
 
 > 基础设施足迹与威胁情报 9 源的端点行为参照 theHarvester 社区实测
 > (2026-09)与各服务公开文档,限速为保守声明待实测复核;`shodan_internetdb`
 > 入参为 IP(本 SDK 不做 DNS 解析),`hackertarget` 免 key 每日限量。
+> 2026-09-20 新增的 41 源端点形态已逐一直连探测;个别源(`jp_houjin_bangou`
+> / `repology` / `lobsters`)在部分网络环境 TLS 握手异常,属网络层可达性
+> 问题,接口本身公开免 key。
 
 ## 单渠道访问的语义
 
@@ -172,16 +185,16 @@ client = freesignt.FreeSight(cache=MyRedisCache())   # 或 cache=None 关闭缓�
 
 ```bash
 uv sync                 # 安装依赖(含 dev)
-uv run pytest           # 76 个离线单测(httpx MockTransport,不依赖真实网络)
+uv run pytest           # 131 个离线单测(httpx MockTransport,不依赖真实网络)
 uv run ruff check .     # lint
 ```
 
 测试覆盖:注册表/Schema 派生/令牌桶与冷却/限速头解析/缓存与单飞/
-34 源抓取与源内归一化/同步桥线程安全。
+75 源抓取与源内归一化/RSS-Atom 解析/同步桥线程安全。
 
 ## 说明与边界
 
-- 各源限速值为 2026-09-09 实测快照,平台可能随时调整;自适应冷却机制会
+- 各源限速值为 2026-09-09/20 实测快照,平台可能随时调整;自适应冷却机制会
   在真实 429 时自动退避,无需改代码;
 - SEC 源要求申明式 UA,请通过 `FreeSight(sec_user_agent="公司名 邮箱")`
   覆盖默认占位;
@@ -189,5 +202,21 @@ uv run ruff check .     # lint
   上层应把"空评论"视为可重试信号而非业务结论;
 - `crt_sh` 为单机慢源(长超时/串行/多次退避),适合低频后台任务而非
   在线请求路径;
+- 反爬敏感源:`baidu` 匿名高频会命中安全验证页(源内显式识别为失败)、
+  `reddit` 匿名限速严格(约 10 qpm,重度使用应注册免费 OAuth)、
+  `cn_stats` 实测部分网络 403(需浏览器会话)、`rsshub` 公共实例
+  可用性波动大(生产建议 Docker 自建)、`searxng` 公共实例常带浏览器
+  验证(如 searx.be,源内显式识别,建议自建)、`mojeek` 实测 httpx
+  直连返回空壳页(需浏览器会话)、SERP 类(`baidu`/`yahoo`/`mojeek`)
+  解析为尽力而为,页面改版时可能返回原始 HTML;
+- 网络可达性个别差异:`jp_houjin_bangou`/`repology`/`lobsters`/`imf`
+  在部分出口网络 TLS 握手异常(接口本身公开免 key),部署前建议先行验证;
+- `ddg_search` 走 ddgs 库(primp 浏览器指纹)自带重试,不经过本 SDK
+  的 HttpEngine 治理,限速由源声明值约束;
+- 2026-09-20 调研后明确**不收录**的"免费"源(实测不可达或不满足免 key):
+  EDINET v2(需免费订阅键,v1 已关闭)、德国 Handelsregister(JSF 表单站,
+  无免 key API,开放镜像 OffeneRegister 亦不可用)、OpenVC(Cloudflare
+  浏览器验证墙,可经 `jina_reader` 组合访问)、INPI RNE API(同墙,
+  已由 `fr_bodacc` 承担法国披露角色)、Crunchbase API(2025 起免费层取消);
 - 源内仅做必要的结构归一化(RSS 压平/JSONL 逐行解析等),跨源的字段
   映射、筛选与排序均不在 SDK 职责内。

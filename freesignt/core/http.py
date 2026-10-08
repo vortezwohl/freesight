@@ -35,7 +35,7 @@ from freesignt.core.ratelimit import (
 )
 
 # 默认 UA:显式申明开源研究身份,便于源方识别与联系。
-DEFAULT_UA = "FreeSight/0.3 (open-source competitive research SDK)"
+DEFAULT_UA = "FreeSight/0.4 (open-source competitive research SDK)"
 # SEC 系列源要求"公司名 邮箱"格式 UA,此为占位默认,生产应通过配置覆盖。
 DEFAULT_SEC_UA = "FreeSightResearch admin@example.org"
 
