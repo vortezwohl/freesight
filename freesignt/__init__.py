@@ -1,6 +1,6 @@
 """freesignt:免费竞品调研多渠道数据访问 SDK。
 
-封装 75 个免费免 key 公开数据源(App Store/HackerNews/GitHub/开发者
+封装 74 个免费免 key 公开数据源(App Store/HackerNews/GitHub/开发者
 生态/招聘板/社媒/法定披露/Steam/基础设施足迹/威胁情报/通用搜索引擎/
 网页获取代理/各国公司注册/风投目录/宏观统计/Discourse 社区/内容流/
 学术文献/包生态等),只做一件事:

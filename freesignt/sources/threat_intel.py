@@ -71,30 +71,13 @@ class UrlscanSearchSource(BaseSource):
         return result
 
 
-def _collect_entry_emails(entries: list | None) -> list[str]:
-    """从泄漏条目列表中提取去重邮箱。
-
-    Args:
-        entries: infections/employees 条目列表;None 视为空。
-
-    Returns:
-        小写去重排序后的邮箱列表。
-    """
-    emails: set[str] = set()
-    for entry in entries or []:
-        if not isinstance(entry, dict):
-            continue
-        for email in entry.get("emails") or []:
-            if isinstance(email, str) and email:
-                emails.add(email.lower())
-    return sorted(emails)
-
-
 class HudsonrockSource(BaseSource):
     """Hudson Rock infostealer 泄漏查询:免 key 免费端点。
 
-    返回与域名关联的企业感染(infostealer 受害主机)与员工邮箱泄漏
-    规模,是评估目标公司安全水位的暗面信号;数据变化缓慢,建议长缓存。
+    返回与域名关联的凭据命中规模(员工/用户/第三方)与泄漏 URL 清单,
+    是评估目标公司安全水位的暗面信号;数据变化缓慢,建议长缓存。
+    端点为 osint-tools/search-by-domain(2026-10-08 实测;旧 v2/free/domain
+    已 404 下线),邮箱级明细须走官方 search-by-email 端点另行查询。
     """
 
     name = "hudsonrock"
@@ -102,19 +85,20 @@ class HudsonrockSource(BaseSource):
     rate_limit = 5
     rate_period_s = 60
     cache_ttl_s = 86400.0
-    description = "Hudson Rock infostealer 域名泄漏画像(企业感染/员工邮箱,涉敏感数据)"
+    description = "Hudson Rock infostealer 域名泄漏画像(凭据命中规模/泄漏 URL,涉敏感数据)"
 
     async def fetch(self, domain: str) -> FetchResult:
-        """查询某域名关联的 infostealer 泄漏概览与邮箱清单。
+        """查询某域名关联的 infostealer 泄漏概览与泄漏 URL 清单。
 
         Args:
             domain: 主域名(如 example.com)。
 
         Returns:
-            data 为 {"domain", "corporate"(企业概览 dict 或 None),
-            "infections_count", "employees_count", "emails": [...],
-            "latest_fingerprint"}——emails 为两类条目合并去重的邮箱清单;
-            无泄漏数据时各计数为 0、emails 为空列表(仍为成功结果)。
+            data 为 {"domain", "total"(命中凭据总数), "total_stealers"
+            (全网窃密木马规模), "employees_count", "users_count",
+            "third_parties_count", "employee_urls", "client_urls",
+            "all_urls"(条目含 url/occurrence/type), "logo"}——
+            无泄漏数据时各计数为 0、URL 清单为空列表(仍为成功结果)。
 
         Raises:
             ValueError: domain 为空。
@@ -122,21 +106,25 @@ class HudsonrockSource(BaseSource):
         if not domain:
             raise ValueError("domain 不能为空")
         result = await self._get(
-            "https://cavalier.hudsonrock.com/api/v2/free/domain",
+            "https://cavalier.hudsonrock.com/api/json/v2/osint-tools/search-by-domain",
             params={"domain": domain},
         )
         if not result.ok or not isinstance(result.data, dict):
             return result
         data: dict = result.data
-        infections = data.get("infections") or []
-        employees = data.get("employees") or []
-        emails = _collect_entry_emails(infections) + _collect_entry_emails(employees)
+        # data 子对象在无泄漏域名上可能缺失,统一按空处理;
+        # 计数字段上游可能给 null,归一化为 0 以稳定调用方分支。
+        detail = data.get("data") or {}
         result.data = {
-            "domain": data.get("domain", domain),
-            "corporate": data.get("corporates"),
-            "infections_count": len(infections),
-            "employees_count": len(employees),
-            "emails": sorted(set(emails)),
-            "latest_fingerprint": data.get("latest_fingerprint"),
+            "domain": domain,
+            "total": data.get("total") or 0,
+            "total_stealers": data.get("totalStealers") or 0,
+            "employees_count": data.get("employees") or 0,
+            "users_count": data.get("users") or 0,
+            "third_parties_count": data.get("third_parties") or 0,
+            "employee_urls": detail.get("employees_urls") or [],
+            "client_urls": detail.get("clients_urls") or [],
+            "all_urls": detail.get("all_urls") or [],
+            "logo": data.get("logo"),
         }
         return result

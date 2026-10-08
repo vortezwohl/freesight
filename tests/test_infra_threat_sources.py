@@ -160,33 +160,38 @@ async def test_urlscan_search_normalization(client, router) -> None:
     assert result.data["scans"][1]["ip"] is None
 
 
-async def test_hudsonrock_emails_merge_and_null_fields(client, router) -> None:
-    """hudsonrock:infections/employees 邮箱合并去重;null 字段计 0。"""
+async def test_hudsonrock_counts_and_url_lists(client, router) -> None:
+    """hudsonrock(osint-tools 新端点):计数映射与 URL 清单透传。"""
     router.add_json("cavalier.hudsonrock.com", {
-        "corporates": {"stealer_logs_count": 12, "third_party_domains_count": 3},
-        "infections": [
-            {"emails": ["Bob@Example.com", "alice@example.com"]},
-            {"emails": ["alice@example.com"]},
-        ],
-        "employees": [{"emails": ["hr@example.com"]}],
-        "domain": "example.com",
-        "latest_fingerprint": "abc123",
+        "total": 61, "totalStealers": 36717969,
+        "employees": 61, "users": 0, "third_parties": 3,
+        "logo": "https://logo.example.com/x.png",
+        "data": {
+            "employees_urls": [
+                {"occurrence": 41, "type": "Employee", "url": "https://auth.example.com"}],
+            "clients_urls": [],
+            "all_urls": [
+                {"occurrence": 41, "type": "Employee", "url": "https://auth.example.com"}],
+        },
     })
     result = await client.fetch("hudsonrock", domain="example.com")
     assert result.ok
-    assert result.data["emails"] == [
-        "alice@example.com", "bob@example.com", "hr@example.com"
-    ]
-    assert result.data["infections_count"] == 2 and result.data["employees_count"] == 1
-    assert result.data["corporate"]["stealer_logs_count"] == 12
+    assert "/osint-tools/search-by-domain" in str(router.calls[-1].url)
+    assert result.data["domain"] == "example.com"
+    assert result.data["total"] == 61 and result.data["total_stealers"] == 36717969
+    assert result.data["employees_count"] == 61 and result.data["users_count"] == 0
+    assert result.data["third_parties_count"] == 3
+    assert result.data["employee_urls"] == [
+        {"occurrence": 41, "type": "Employee", "url": "https://auth.example.com"}]
+    assert result.data["client_urls"] == []
+    assert result.data["logo"] == "https://logo.example.com/x.png"
 
+    # 空数据形态:data 子对象与计数字段缺失/null 时归一化为 0 与空清单。
     router2 = RouterTransport()
-    router2.add_json("cavalier.hudsonrock.com", {
-        "corporates": None, "infections": None, "employees": None,
-        "domain": "example.com",
-    })
+    router2.add_json("cavalier.hudsonrock.com", {"employees": None})
     from freesignt.core.client import AsyncFreeSight
     async with AsyncFreeSight(transport=router2, rate_multiplier=1000.0) as c2:
         empty = await c2.fetch("hudsonrock", domain="example.com")
     assert empty.ok
-    assert empty.data["emails"] == [] and empty.data["infections_count"] == 0
+    assert empty.data["total"] == 0 and empty.data["employees_count"] == 0
+    assert empty.data["all_urls"] == []

@@ -36,14 +36,18 @@ async def test_eurostat_filters_expand(client, router) -> None:
     assert "geo=DE" in url and "FR" in url and "time=2024" in url
 
 
-async def test_oecd_path_with_periods(client, router) -> None:
-    """OECD 路径含数据集与维度;start/end 成对才拼时间。"""
+async def test_oecd_path_and_periods(client, router) -> None:
+    """OECD 路径仅含数据集与维度;时间窗经 startPeriod/endPeriod 下推。"""
     router.add_json("sdmx.oecd.org", {"data": {"dataSets": []}})
     result = await client.fetch("oecd", dataset="DF_QNA", filter="A..B1GQ.BEL")
     assert result.ok
     assert "/data/DF_QNA/A..B1GQ.BEL" in str(router.calls[-1].url)
-    await client.fetch("oecd", dataset="DF_QNA", start="2023", refresh=True)
-    assert "2023" not in str(router.calls[-1].url) or "/" in str(router.calls[-1].url)
+    await client.fetch("oecd", dataset="DF_QNA", start="2023-Q1",
+                       end="2024-Q4", refresh=True)
+    url = str(router.calls[-1].url)
+    assert "startPeriod=2023-Q1" in url and "endPeriod=2024-Q4" in url
+    # 回归防护:时间窗不得占路径 provider 段(旧实现致 403 Invalid structure)。
+    assert "/2023-Q1" not in url and "/2024-Q4" not in url
 
 
 async def test_imf_params(client, router) -> None:

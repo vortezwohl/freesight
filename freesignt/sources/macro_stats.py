@@ -110,23 +110,31 @@ class OecdSource(BaseSource):
         """查询一个 OECD 数据集。
 
         Args:
-            dataset: 数据集标识(如 "OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA,1.0";
-                简短式 "DF_QNA" 部分端点亦接受)。
-            filter: 维度过滤 SDMX 语法(如 "A..B1GQ.BEL";
-                点位对应各维度,all 表示不过滤)。
-            start: 可选,起始期(如 "2023-Q1");须与 end 成对。
+            dataset: 数据集标识(如 "OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA"。
+                注意维度数随数据集演进变化(DF_QNA 现为 13 维),维度键
+                应以当前 DSD 为准,如 "Q..BEL...B1GQ......."。
+            filter: 维度过滤 SDMX 语法,点位数须与数据集维度数一致,
+                空位表示不过滤,all 表示整体不过滤。
+            start: 可选,起始期(如 "2023-Q1")。
             end: 可选,截止期。
 
         Returns:
             data 为 SDMX-JSON 对象原样(data/dataSets 结构);
-            start/end 只提供一个时不生效(路径语义要求成对)。
+            start/end 经 startPeriod/endPeriod 查询参数下推,可单独使用。
+            时间窗不得拼入路径:SDMX 2.1 路径中 key 之后是 provider 段,
+            误占会导致 403 Invalid structure(2026-10-08 实测)。
         """
-        path = f"{dataset}/{filter}"
-        if start and end:
-            path += f"/{start}/{end}"
+        params: dict[str, object] = {
+            "format": "jsondata",
+            "dimensionAtObservation": "AllDimensions",
+        }
+        if start:
+            params["startPeriod"] = start
+        if end:
+            params["endPeriod"] = end
         return await self._get(
-            f"https://sdmx.oecd.org/public/rest/data/{path}",
-            params={"format": "jsondata", "dimensionAtObservation": "AllDimensions"},
+            f"https://sdmx.oecd.org/public/rest/data/{dataset}/{filter}",
+            params=params,
         )
 
 

@@ -2,7 +2,7 @@
 
 # Freesight
 
-**75 free data sources. Zero API keys. One polite client.**
+**74 free data sources. Zero API keys. One polite client.**
 
 A thin multi-channel access SDK for competitive-intelligence research:
 every free, keyless public endpoint — app stores, search engines, company
@@ -13,8 +13,8 @@ and request coalescing for you.
 [![version](https://img.shields.io/badge/version-0.4.0-blue)](pyproject.toml)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![sources](https://img.shields.io/badge/sources-75%20free%20%26%20keyless-orange)](#-source-catalog)
-[![tests](https://img.shields.io/badge/tests-132%20passed-brightgreen)](#-development)
+[![sources](https://img.shields.io/badge/sources-74%20free%20%26%20keyless-orange)](#-source-catalog)
+[![tests](https://img.shields.io/badge/tests-131%20passed-brightgreen)](#-development)
 [![stars](https://img.shields.io/github/stars/vortezwohl/freesight)](https://github.com/vortezwohl/freesight/stargazers)
 
 ```bash
@@ -116,7 +116,7 @@ results = await asyncio.gather(
 
 ## Source Catalog
 
-75 sources across 20 modules, all free and keyless. Rate limits are
+74 sources across 20 modules, all free and keyless. Rate limits are
 measured snapshots (2026-09); adaptive cooldown absorbs upstream changes
 without code edits.
 
@@ -127,7 +127,7 @@ without code edits.
 | Open source | `github_public` / `ecosyste_ms` / `npm_registry` / `pypi_metadata` / `pypi_downloads` / `wordpress_plugins` / `huggingface_hub` | Repos, packages, download counts, model trends |
 | Hiring | `greenhouse_jobs` / `lever_jobs` | Public ATS boards — stealth-company direction signals |
 | Social | `bluesky` / `mastodon_trends` / `v2ex` | Public search and trends |
-| Legal disclosure | `sec_edgar` / `sec_form_d` / `uspto_trademark` / `rdap_domain` / `common_crawl` | SEC filings, Form D raises, trademarks, new domains, web-wide snapshots |
+| Legal disclosure | `sec_edgar` / `sec_form_d` / `rdap_domain` / `common_crawl` | SEC filings, Form D raises, new domains, web-wide snapshots |
 | Games | `steam_store` / `steamspy` / `itchio_feed` | Steam search, player estimates, indie RSS |
 | Infra footprint | `crt_sh` / `rapiddns` / `subdomain_center` / `otx_passive_dns` / `hackertarget` / `shodan_internetdb` / `certspotter` / `wayback_cdx` | Subdomain discovery, passive DNS, IP/port profiles, archive indexes |
 | Threat intel | `urlscan` / `hudsonrock` | Public scan records; infostealer exposure (sensitive — your compliance) |
@@ -166,7 +166,9 @@ without code edits.
   (JSF form site, no keyless API; the OffeneRegister mirror was down),
   OpenVC (Cloudflare browser wall — reachable via `jina_reader` instead),
   INPI RNE API (same wall; `fr_bodacc` covers French disclosures),
-  Crunchbase API (free tier removed in 2025).
+  Crunchbase API (free tier removed in 2025). Removed 2026-10 after the
+  endpoint moved behind a key: `uspto_trademark` (USPTO IBD API now
+  requires an api.uspto.gov key; the legacy URL 301s to a web page).
 - Chinese company registry (gsxt.gov.cn) is excluded on principle:
   automated scraping is explicitly forbidden and legally risky.
 
@@ -280,12 +282,12 @@ Deliberately **not** provided (yours to own):
 
 ```bash
 uv sync                 # install (dev included)
-uv run pytest           # 132 offline tests (httpx MockTransport, no network)
+uv run pytest           # 131 offline tests (httpx MockTransport, no network)
 uv run ruff check .     # lint
 ```
 
 Coverage: registry & schema derivation, token bucket & cooldown math,
-rate-header parsing, cache & single-flight, all 75 sources' fetch and
+rate-header parsing, cache & single-flight, all 74 sources' fetch and
 in-source normalization, RSS/Atom parsing, sync-bridge thread safety.
 
 ## Contributing

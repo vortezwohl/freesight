@@ -1,8 +1,11 @@
-"""政府/法定披露免费免 key 源:SEC、USPTO 商标、RDAP 域名、Common Crawl。
+"""政府/法定披露免费免 key 源:SEC、RDAP 域名、Common Crawl。
 
 实测基准(2026-09-09):
 - SEC 政策 10 req/s 且 UA 必须"公司名 邮箱"格式(随意 UA 曾触发 500);
-- USPTO/Verisign RDAP/Common Crawl 均无限速头(1.4-3.6s)。
+- Verisign RDAP/Common Crawl 均无限速头(1.4-3.6s)。
+
+USPTO 商标源已于 2026-10-08 移除:IBD API 迁至需 API key 的
+api.uspto.gov 网关,旧端点 301 到网页,keyless 通道不复存在。
 """
 
 from __future__ import annotations
@@ -60,33 +63,6 @@ class SecEdgarSource(BaseSource):
         if forms:
             params["forms"] = forms
         return await self._get("https://efts.sec.gov/LATEST/search-index", params=params)
-
-
-class UsptoTrademarkSource(BaseSource):
-    """USPTO 商标库(IBD API):商标申请常早于产品发布数月。"""
-
-    name = "uspto_trademark"
-    category = SourceCategory.FREE_NOKEY
-    rate_limit = 30
-    rate_period_s = 60
-    timeout = 30
-    cache_ttl_s = 21600.0
-    description = "USPTO 商标检索(发布前品牌名先行信号)"
-
-    async def fetch(self, search_text: str, rows: int = 20) -> FetchResult:
-        """按关键词检索商标文档。
-
-        Args:
-            search_text: 商标关键词/品牌名。
-            rows: 返回条数。
-
-        Returns:
-            data 为 IBD 响应 dict(含 trademark 文档列表)。
-        """
-        return await self._get(
-            "https://developer.uspto.gov/ibd-api/v1/trademark/documents",
-            params={"searchText": search_text, "rows": rows},
-        )
 
 
 class RdapDomainSource(BaseSource):

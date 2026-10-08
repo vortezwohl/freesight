@@ -8,11 +8,11 @@ from freesignt.core.errors import SourceNotFoundError
 from freesignt.core.models import SourceCategory
 
 
-def test_all_75_sources_registered() -> None:
-    """75 个源全部注册且名称唯一。"""
+def test_all_74_sources_registered() -> None:
+    """74 个源全部注册且名称唯一(uspto_trademark 因上游迁 key 已移除)。"""
     names = registry.names()
-    assert len(names) == 75
-    assert len(set(names)) == 75
+    assert len(names) == 74
+    assert len(set(names)) == 74
 
 
 def test_expected_source_names_present() -> None:
@@ -32,7 +32,7 @@ def test_expected_source_names_present() -> None:
         # social
         "bluesky", "mastodon_trends", "v2ex",
         # gov_registry
-        "sec_edgar", "uspto_trademark", "rdap_domain", "common_crawl",
+        "sec_edgar", "rdap_domain", "common_crawl",
         # steam / misc
         "steam_store", "steamspy", "itchio_feed", "crt_sh",
         # infra_intel / threat_intel
@@ -65,7 +65,7 @@ def test_expected_source_names_present() -> None:
 def test_all_free_nokey_category() -> None:
     """当前全部源归入 free_nokey 分类。"""
     sources = registry.by_category(SourceCategory.FREE_NOKEY)
-    assert len(sources) == 75
+    assert len(sources) == 74
 
 
 def test_get_unknown_raises_with_hint() -> None:

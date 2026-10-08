@@ -224,14 +224,6 @@ async def test_sec_headers_override(client, router) -> None:
     assert sec_req.headers["user-agent"] == client.engine.config.sec_user_agent
 
 
-async def test_uspto_trademark(client, router) -> None:
-    """uspto:文档检索原样返回。"""
-    router.add_json("developer.uspto.gov", {"response": {"docs": [
-        {"trademarkName": "ACME", "statusLabel": "Registered", "serialNumber": "1"}]}})
-    result = await client.fetch("uspto_trademark", search_text="acme")
-    assert result.ok and result.data["response"]["docs"][0]["trademarkName"] == "ACME"
-
-
 async def test_rdap_domain(client, router) -> None:
     """rdap:注册信息原样返回与后缀校验。"""
     router.add_json("rdap.verisign.com", {
