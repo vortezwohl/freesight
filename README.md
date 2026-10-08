@@ -10,7 +10,7 @@ registries, funding filings, package ecosystems, threat intel and more —
 wrapped in one client that handles rate limits, 429 cooldowns, TTL caching
 and request coalescing for you.
 
-[![version](https://img.shields.io/badge/version-0.4.0-blue)](pyproject.toml)
+[![version](https://img.shields.io/badge/version-0.4.1-blue)](pyproject.toml)
 [![python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![sources](https://img.shields.io/badge/sources-74%20free%20%26%20keyless-orange)](#-source-catalog)

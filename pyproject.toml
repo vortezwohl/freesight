@@ -1,7 +1,7 @@
 [project]
 name = "freesight"
-version = "0.4.0"
-description = "75 free, keyless data sources. One polite Python client. Rate limits, 429 cooldowns, TTL cache and single-flight — handled."
+version = "0.4.1"
+description = "74 free, keyless data sources. One polite Python client. Rate limits, 429 cooldowns, TTL cache and single-flight — handled."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
